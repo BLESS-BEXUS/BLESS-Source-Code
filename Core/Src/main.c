@@ -19,6 +19,8 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "cmsis_os.h"
+#include "sensors.h"
+#include "telemetry.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -516,6 +518,8 @@ void StartAcquire(void *argument)
   /* Infinite loop */
   for(;;)
   {
+	TelemetryPacket packet;
+	readSensors(packet);
     osDelay(1);
   }
   /* USER CODE END StartAcquire */
