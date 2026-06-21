@@ -11,6 +11,7 @@
 #include "max31865.h"
 #include "tmp102.h"
 #include "ina219.h"
+#include "sht4x.h"
 
 #include "telemetry.h"
 

@@ -31,6 +31,12 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 
+typedef enum{
+	STATE_INIT,
+	STATE_IDDLE,
+	STATE_FLIGHT
+} SystemState_t;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -51,6 +57,7 @@ SPI_HandleTypeDef hspi3;
 TIM_HandleTypeDef htim3;
 
 UART_HandleTypeDef huart2;
+UART_HandleTypeDef huart3;
 
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
@@ -106,6 +113,13 @@ const osMessageQueueAttr_t txMailBox_attributes = {
 };
 /* USER CODE BEGIN PV */
 
+volatile SystemState_t current_state = STATE_INIT;
+
+// UART VARIABLES
+uint8_t rx_byte;
+uint8_t rx_buffer[100];
+uint16_t rx_index = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -115,6 +129,7 @@ static void MX_USART2_UART_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_SPI3_Init(void);
+static void MX_USART3_UART_Init(void);
 void StartDefaultTask(void *argument);
 void StartAcquire(void *argument);
 void StartTXHalow(void *argument);
@@ -164,6 +179,7 @@ int main(void)
   MX_TIM3_Init();
   MX_I2C1_Init();
   MX_SPI3_Init();
+  MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -459,6 +475,41 @@ static void MX_USART2_UART_Init(void)
 }
 
 /**
+  * @brief USART3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART3_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART3_Init 0 */
+
+  /* USER CODE END USART3_Init 0 */
+
+  /* USER CODE BEGIN USART3_Init 1 */
+
+  /* USER CODE END USART3_Init 1 */
+  huart3.Instance = USART3;
+  huart3.Init.BaudRate = 115200;
+  huart3.Init.WordLength = UART_WORDLENGTH_8B;
+  huart3.Init.StopBits = UART_STOPBITS_1;
+  huart3.Init.Parity = UART_PARITY_NONE;
+  huart3.Init.Mode = UART_MODE_TX_RX;
+  huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart3.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart3.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart3.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART3_Init 2 */
+
+  /* USER CODE END USART3_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -495,6 +546,14 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pins : GNSS_UART_RX_Pin GNSS_UART_TX_Pin */
+  GPIO_InitStruct.Pin = GNSS_UART_RX_Pin|GNSS_UART_TX_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  GPIO_InitStruct.Alternate = GPIO_AF8_LPUART1;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
   /*Configure GPIO pins : ITEMP_ALERT_Pin ETEMP_ALERT_Pin */
   GPIO_InitStruct.Pin = ITEMP_ALERT_Pin|ETEMP_ALERT_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
@@ -514,14 +573,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
   GPIO_InitStruct.Alternate = GPIO_AF5_SPI1;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : USART_TX_GNSS_Pin USART_RX_GNSS_Pin */
-  GPIO_InitStruct.Pin = USART_TX_GNSS_Pin|USART_RX_GNSS_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-  GPIO_InitStruct.Alternate = GPIO_AF7_USART3;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pin : CS_F2_Pin */
   GPIO_InitStruct.Pin = CS_F2_Pin;
@@ -566,6 +617,22 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+    if (huart->Instance == USART3) {
+    	if(rx_index < 99){
+            rx_buffer[rx_index] = rx_byte;
+            rx_index++;
+    	}
+
+        if (rx_byte == '\n') {
+        	rx_buffer[rx_index] = '\0';
+            osThreadFlagsSet(TXHALOWHandle, 0x01);
+        } else {
+            HAL_UART_Receive_IT(huart, &rx_byte, 1);
+        }
+    }
+}
+
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartDefaultTask */
@@ -599,13 +666,53 @@ void StartAcquire(void *argument)
   osDelay(1000);
   Sensors_Init();
 
+  // Heater PID variables
+  float KP = 5.0;
+  float KI = 2.0;
+  float KD = 1.0;
+
+  float accumulative_error = 0.0;
+  float last_error = 0.0;
+  float set_point = -10.0;
+
+  float error, p, i, d;
+  float output_power = 0.0;
+
+  current_state = STATE_FLIGHT;
+
+  uint32_t previousWakeTime = osKernelGetTickCount();
+
   /* Infinite loop */
   for(;;)
   {
-	TelemetryPacket packet;
-	readSensors(&packet);
-	printTelemetry(&packet);
-    osDelay(1000);
+	if(current_state == STATE_FLIGHT){
+		TelemetryPacket packet;
+		readSensors(&packet);
+
+		// Adjust heater
+		error = set_point - packet.int_temp;
+		p = KP * error;
+		accumulative_error = accumulative_error + error;
+		i = KI * accumulative_error;
+		d = KD * (error - last_error);
+
+		output_power = p + i + d;
+		last_error = error;
+
+		if (output_power >= 100.0 || output_power <= 0.0){
+			accumulative_error = accumulative_error - error;
+		}
+		output_power  = (output_power > 100.0) ? 100.0 : output_power;
+		output_power  = (output_power < 0.0) ? 0.0 : output_power;
+
+		// Update PWM with ouputpower
+
+		printTelemetry(&packet); // Just during tests
+	}
+
+
+	previousWakeTime += 1000;
+	osDelayUntil(previousWakeTime);
   }
   /* USER CODE END StartAcquire */
 }
@@ -620,10 +727,20 @@ void StartAcquire(void *argument)
 void StartTXHalow(void *argument)
 {
   /* USER CODE BEGIN StartTXHalow */
+  osDelay(5000);
+  printf("TX_HALOW INICIADO\n");
+
   /* Infinite loop */
   for(;;)
   {
-    osDelay(1);
+	rx_index = 0;
+
+	HAL_UART_Receive_IT(&huart3, &rx_byte, 1);
+	HAL_UART_Transmit(&huart3, (uint8_t*)"AT+MODE?\r\n", 10, 100);
+	printf("ESPERANDO RESPUESTA\n");
+	osThreadFlagsWait(0x01, osFlagsWaitAny, osWaitForever);
+	printf("Respuesta HALOW: %s", rx_buffer);
+    osDelay(5000);
   }
   /* USER CODE END StartTXHalow */
 }

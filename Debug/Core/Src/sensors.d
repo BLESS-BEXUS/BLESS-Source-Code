@@ -33,8 +33,8 @@ Core/Src/sensors.o: ../Core/Src/sensors.c ../Core/Inc/sensors.h \
  ../Drivers/STM32L4xx_HAL_Driver/Inc/stm32l4xx_hal_tim_ex.h \
  ../Drivers/STM32L4xx_HAL_Driver/Inc/stm32l4xx_hal_uart.h \
  ../Drivers/STM32L4xx_HAL_Driver/Inc/stm32l4xx_hal_uart_ex.h \
- ../Core/Inc/tmp102.h ../Core/Inc/ina219.h ../Core/Inc/telemetry.h \
- ../Core/Inc/main.h
+ ../Core/Inc/tmp102.h ../Core/Inc/ina219.h ../Core/Inc/sht4x.h \
+ ../Core/Inc/telemetry.h ../Core/Inc/main.h
 ../Core/Inc/sensors.h:
 ../Core/Inc/max31865.h:
 ../Core/Inc/main.h:
@@ -73,5 +73,6 @@ Core/Src/sensors.o: ../Core/Src/sensors.c ../Core/Inc/sensors.h \
 ../Drivers/STM32L4xx_HAL_Driver/Inc/stm32l4xx_hal_uart_ex.h:
 ../Core/Inc/tmp102.h:
 ../Core/Inc/ina219.h:
+../Core/Inc/sht4x.h:
 ../Core/Inc/telemetry.h:
 ../Core/Inc/main.h:

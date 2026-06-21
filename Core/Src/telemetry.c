@@ -39,6 +39,7 @@ void printTelemetry(TelemetryPacket *packet){
 
 	// Sensor Data
 	printf("Temperature - EXT: %.2f C | INT: %.2f C\r\n", packet->ext_temp / 100.0, packet->int_temp / 100.0);
+	printf("Humidity: %.2f%% \r\n", packet->ext_hum / 100.0);
 
 	// System State and Security
 	printf("Checksum: 0x%04X\r\n", packet->checksum);

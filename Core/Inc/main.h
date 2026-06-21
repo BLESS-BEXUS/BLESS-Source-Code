@@ -61,6 +61,10 @@ void Error_Handler(void);
 /* Private defines -----------------------------------------------------------*/
 #define B1_Pin GPIO_PIN_13
 #define B1_GPIO_Port GPIOC
+#define GNSS_UART_RX_Pin GPIO_PIN_0
+#define GNSS_UART_RX_GPIO_Port GPIOC
+#define GNSS_UART_TX_Pin GPIO_PIN_1
+#define GNSS_UART_TX_GPIO_Port GPIOC
 #define ITEMP_ALERT_Pin GPIO_PIN_2
 #define ITEMP_ALERT_GPIO_Port GPIOC
 #define ETEMP_ALERT_Pin GPIO_PIN_3
@@ -77,10 +81,10 @@ void Error_Handler(void);
 #define MISO_ETH_GPIO_Port GPIOA
 #define MOSI_ETH_Pin GPIO_PIN_7
 #define MOSI_ETH_GPIO_Port GPIOA
-#define USART_TX_GNSS_Pin GPIO_PIN_10
-#define USART_TX_GNSS_GPIO_Port GPIOB
-#define USART_RX_GNSS_Pin GPIO_PIN_11
-#define USART_RX_GNSS_GPIO_Port GPIOB
+#define HALOW_UART_TX_Pin GPIO_PIN_4
+#define HALOW_UART_TX_GPIO_Port GPIOC
+#define HALOW_UART_RX_Pin GPIO_PIN_5
+#define HALOW_UART_RX_GPIO_Port GPIOC
 #define CS_F2_Pin GPIO_PIN_7
 #define CS_F2_GPIO_Port GPIOC
 #define CS_F1_Pin GPIO_PIN_9

@@ -1,0 +1,9 @@
+../Core/Src/sht4x.c:11:7:SHT4X_Measure_High	5
+../Core/Src/sht4x.c:48:7:SHT4X_Measure_Medium	5
+../Core/Src/sht4x.c:85:7:SHT4X_Measure_Low	5
+../Core/Src/sht4x.c:125:7:SHT4X_Heater_Measure_High_One	5
+../Core/Src/sht4x.c:161:7:SHT4X_Heater_Measure_High_Dot_One	5
+../Core/Src/sht4x.c:198:7:SHT4X_Heater_Measure_Medium_One	5
+../Core/Src/sht4x.c:234:7:SHT4X_Heater_Measure_Medium_Dot_One	5
+../Core/Src/sht4x.c:270:7:SHT4X_Heater_Measure_Low_One	5
+../Core/Src/sht4x.c:306:7:SHT4X_Heater_Measure_Low_Dot_One	5

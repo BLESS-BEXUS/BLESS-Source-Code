@@ -38,34 +38,34 @@ $(wildcard ../makefile.init) \
 $(wildcard ../makefile.targets) \
 
 
-BUILD_ARTIFACT_NAME := bless_source_code
+BUILD_ARTIFACT_NAME := BLESS-Source-Code
 BUILD_ARTIFACT_EXTENSION := elf
 BUILD_ARTIFACT_PREFIX :=
 BUILD_ARTIFACT := $(BUILD_ARTIFACT_PREFIX)$(BUILD_ARTIFACT_NAME)$(if $(BUILD_ARTIFACT_EXTENSION),.$(BUILD_ARTIFACT_EXTENSION),)
 
 # Add inputs and outputs from these tool invocations to the build variables 
 EXECUTABLES += \
-bless_source_code.elf \
+BLESS-Source-Code.elf \
 
 MAP_FILES += \
-bless_source_code.map \
+BLESS-Source-Code.map \
 
 SIZE_OUTPUT += \
 default.size.stdout \
 
 OBJDUMP_LIST += \
-bless_source_code.list \
+BLESS-Source-Code.list \
 
 
 # All Target
 all: main-build
 
 # Main-build Target
-main-build: bless_source_code.elf secondary-outputs
+main-build: BLESS-Source-Code.elf secondary-outputs
 
 # Tool invocations
-bless_source_code.elf bless_source_code.map: $(OBJS) $(USER_OBJS) C:\Users\Mario\Documents\BLESS\BLESS-Source-Code\STM32L476RGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "bless_source_code.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\Users\Mario\Documents\BLESS\BLESS-Source-Code\STM32L476RGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="bless_source_code.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -u _printf_float -Wl,--start-group -lc -lm -Wl,--end-group
+BLESS-Source-Code.elf BLESS-Source-Code.map: $(OBJS) $(USER_OBJS) M:\BLESS\BLESS-Source-Code\STM32L476RGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "BLESS-Source-Code.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"M:\BLESS\BLESS-Source-Code\STM32L476RGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="BLESS-Source-Code.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -u _printf_float -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
@@ -74,14 +74,14 @@ default.size.stdout: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
 	@echo 'Finished building: $@'
 	@echo ' '
 
-bless_source_code.list: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-objdump -h -S $(EXECUTABLES) > "bless_source_code.list"
+BLESS-Source-Code.list: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-objdump -h -S $(EXECUTABLES) > "BLESS-Source-Code.list"
 	@echo 'Finished building: $@'
 	@echo ' '
 
 # Other Targets
 clean:
-	-$(RM) bless_source_code.elf bless_source_code.list bless_source_code.map default.size.stdout
+	-$(RM) BLESS-Source-Code.elf BLESS-Source-Code.list BLESS-Source-Code.map default.size.stdout
 	-@echo ' '
 
 secondary-outputs: $(SIZE_OUTPUT) $(OBJDUMP_LIST)

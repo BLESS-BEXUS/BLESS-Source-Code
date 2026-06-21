@@ -1,2 +1,2 @@
 ../Core/Src/sensors.c:22:6:Sensors_Init	2
-../Core/Src/sensors.c:30:9:readSensors	5
+../Core/Src/sensors.c:30:9:readSensors	7

@@ -51,6 +51,17 @@ uint8_t readSensors(TelemetryPacket *packet){
 		packet->error_flags |= 0x02;
 	}
 
+	// Humidity
+
+	float rh = SHT4X_Measure_High(&hi2c1);
+
+	if(rh != -4.44 || rh != -4.45){
+		packet->ext_hum = (int16_t) (rh * 100);
+	}else{
+		success = 0;
+		packet->error_flags |= 0x03;
+	}
+
 	// Current Consumption (mA)
 	if(INA219_READ_CURRENT(&hi2c1, &ina)){
 		packet->halow_curr = ina.current;
