@@ -27,15 +27,15 @@ void printTelemetry(TelemetryPacket *packet){
 
 	// Radio Performance
 	printf("Radio RSSI: ");
-	if(packet->rssi == 0){
+	if(packet->rf_rssi == 0){
 		printf("DISCONNECTED | ");
 	}else{
-		printf("%d dBm | ", packet->rssi);
+		printf("%d dBm | ", packet->rf_rssi);
 	}
-	printf("TX OK: %u | TX Fail: %u\r\n", packet->tx_success, packet->tx_fail);
+	printf("TX SNR: %u | TX Noise Floor: %u\r\n", packet->rf_snr, packet->rf_noise_floor);
 
 	// Power Data
-	printf("Voltage: %.3f V | Current: %u mA\r\n", packet->bus_vol / 1000.0, packet->halow_curr);
+	printf("Voltage: %.3f V | Current: %u mA\r\n", packet->halow_volt / 1000.0, packet->halow_curr);
 
 	// Sensor Data
 	printf("Temperature - EXT: %.2f C | INT: %.2f C\r\n", packet->ext_temp / 100.0, packet->int_temp / 100.0);

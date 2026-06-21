@@ -5,21 +5,32 @@
  *
  */
 #include "../Inc/max31865.h"
+#include "cmsis_os.h"
 
 void MAX31865_Config(SPI_HandleTypeDef *hspi, uint8_t config_value, GPIO_TypeDef *cs_gpio_port, uint16_t cs_gpio_pin){
 	uint8_t data[2];
 	data[0] = MAX31865_REG_CONFIG_WRITE;
 	data[1] = config_value;
+	taskENTER_CRITICAL();
 	// Wake up the sensor via CS
 	HAL_GPIO_WritePin(cs_gpio_port, cs_gpio_pin, GPIO_PIN_RESET);
 	// Once the sensor has waken up, send the config value
 	HAL_SPI_Transmit(hspi, data, 2, 100);
 	// Set CS to 1 again to close communication
 	HAL_GPIO_WritePin(cs_gpio_port, cs_gpio_pin, GPIO_PIN_SET);
+	taskEXIT_CRITICAL();
 }
 
 void MAX31865_Init(SPI_HandleTypeDef *hspi, GPIO_TypeDef *cs_gpio_port, uint16_t cs_gpio_pin){
 	HAL_GPIO_WritePin(cs_gpio_port, cs_gpio_pin, GPIO_PIN_SET);
+
+	// Dummy packet to clean the connection
+	uint8_t dummy[2] = {0x00, 0x00};
+
+	HAL_GPIO_WritePin(cs_gpio_port, cs_gpio_pin, GPIO_PIN_RESET);
+	HAL_SPI_Transmit(hspi, dummy, 2, 50);
+	HAL_GPIO_WritePin(cs_gpio_port, cs_gpio_pin, GPIO_PIN_SET);
+
 	// Once the sensor has waken up, send the config value
 	MAX31865_Config(hspi, MAX31865_CONFIG_DEFAULT_VALUE, cs_gpio_port, cs_gpio_pin);
 }

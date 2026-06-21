@@ -7,15 +7,24 @@
 
 #include "sensors.h"
 #include "main.h"
+#include <stdio.h>
 
 extern I2C_HandleTypeDef hi2c1;
-extern SPI_HandleTypeDef hspi2;
+extern SPI_HandleTypeDef hspi3;
+extern UART_HandleTypeDef huart2;
+
 
 INA219_t ina;
 
+
+
+
 void Sensors_Init(){
-	MAX31865_Init(&hspi2, SPI2_CS_GPIO_Port, SPI2_CS_Pin);
-	INA219_INIT(&hi2c1, &ina, INA219_I2C_ADDRESS_GND_GND ,INA219_R100, 3.2);
+	MAX31865_Init(&hspi3, CS_ETEMP_GPIO_Port, CS_ETEMP_Pin);
+	if(INA219_INIT(&hi2c1, &ina, INA219_I2C_ADDRESS_GND_GND ,INA219_R100, 3.2) != 0){
+		printf("ERROR INITIALIZATING INA");
+	}
+
 }
 
 uint8_t readSensors(TelemetryPacket *packet){
@@ -33,7 +42,7 @@ uint8_t readSensors(TelemetryPacket *packet){
 	}
 
 	// External Temperature
-	float externalTemp = MAX31865_Read_Temp(&hspi2, SPI2_CS_GPIO_Port, SPI2_CS_Pin);
+	float externalTemp = MAX31865_Read_Temp(&hspi3, CS_ETEMP_GPIO_Port, CS_ETEMP_Pin);
 	if(externalTemp != -318.65){
 		packet->ext_temp =(int16_t) (externalTemp * 100);
 	}
@@ -51,7 +60,7 @@ uint8_t readSensors(TelemetryPacket *packet){
 	}
 
 	// Voltage measurement (mV)
-	packet->bus_vol = 0;
+	packet->halow_volt = 0;
 
 	return success;
 }

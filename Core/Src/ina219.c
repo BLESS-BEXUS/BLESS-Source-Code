@@ -6,16 +6,23 @@
  */
 #include "../Inc/ina219.h"
 
-void INA219_INIT(I2C_HandleTypeDef *hi2c, INA219_t *ina, uint16_t address, float r_shunt, float max_current){
+int INA219_INIT(I2C_HandleTypeDef *hi2c, INA219_t *ina, uint16_t address, float r_shunt, float max_current){
 	ina->current_lsb = max_current / 32768.0;
 	ina->dev_address = address;
+	HAL_StatusTypeDef status;
 	uint16_t cal = (INA219_FIXED_SCALE_VALUE / (ina->current_lsb * r_shunt));
 	uint8_t data[2];
 
 	data[0] = cal >> 8;
 	data[1] = cal;
 
-	HAL_I2C_Mem_Write(hi2c, ina->dev_address, INA219_I2C_REG_CALIBRATION, I2C_MEMADD_SIZE_8BIT, data, 2, 100);
+	status = HAL_I2C_Mem_Write(hi2c, ina->dev_address, INA219_I2C_REG_CALIBRATION, I2C_MEMADD_SIZE_8BIT, data, 2, 100);
+
+	if(status != HAL_OK){
+		return 1;
+	}
+	return 0;
+
 }
 
 uint8_t INA219_READ_CURRENT(I2C_HandleTypeDef *hi2c, INA219_t *ina){

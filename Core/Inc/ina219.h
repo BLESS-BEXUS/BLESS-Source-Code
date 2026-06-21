@@ -62,7 +62,7 @@ typedef struct{
  * @param  r_shunt: R value of the sensor resistance (ohms).
  * @param  max_current: Max current expected to measure.
  */
-void INA219_INIT(I2C_HandleTypeDef *hi2c, INA219_t *ina, uint16_t address, float r_shunt, float max_current);
+int INA219_INIT(I2C_HandleTypeDef *hi2c, INA219_t *ina, uint16_t address, float r_shunt, float max_current);
 
 /**
  * @brief  Read the power value.
