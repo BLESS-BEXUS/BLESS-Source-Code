@@ -37,6 +37,11 @@ typedef enum{
 	STATE_FLIGHT
 } SystemState_t;
 
+typedef struct {
+    uint8_t dest_mac[6]; // MAC del módulo que va a recibir (el STA)
+    uint8_t src_mac[6];  // MAC de este módulo (puede ir a 0)
+    uint16_t eth_type;   // Tipo de protocolo (el manual sugiere usar 0x0000 o 0x3030)
+} __attribute__((packed)) EthernetHeader;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -633,6 +638,27 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     }
 }
 
+// Función auxiliar: vaciar el UART de basura
+static void uart_flush(UART_HandleTypeDef *huart) {
+  uint8_t dummy;
+  while (HAL_UART_Receive(huart, &dummy, 1, 5) == HAL_OK);
+}
+
+// Función auxiliar: leer hasta encontrar "OK" o timeout
+static int wait_for_ok(UART_HandleTypeDef *huart, uint32_t timeout_ms) {
+  uint8_t byte;
+  uint8_t prev = 0;
+  uint32_t start = HAL_GetTick();
+
+  while ((HAL_GetTick() - start) < timeout_ms) {
+    if (HAL_UART_Receive(huart, &byte, 1, 10) == HAL_OK) {
+      if (prev == 'O' && byte == 'K') return 1;
+      prev = byte;
+    }
+  }
+  return 0;
+}
+
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartDefaultTask */
@@ -689,6 +715,10 @@ void StartAcquire(void *argument)
 		TelemetryPacket packet;
 		readSensors(&packet);
 
+		if (osMessageQueuePut(txMailBoxHandle, &packet, 0, 100) == osOK) {
+			printf("Telemetry added to the mailbox");
+		}
+
 		// Adjust heater
 		error = set_point - packet.int_temp;
 		p = KP * error;
@@ -727,21 +757,68 @@ void StartAcquire(void *argument)
 void StartTXHalow(void *argument)
 {
   /* USER CODE BEGIN StartTXHalow */
-  osDelay(5000);
-  printf("TX_HALOW INICIADO\n");
+	  osDelay(5000);
+	  printf("TX_HALOW INICIADO\r\n");
 
-  /* Infinite loop */
-  for(;;)
-  {
-	rx_index = 0;
+	  EthernetHeader eth_hdr = {0};
+	  uint8_t mac_dest[] = {0x82, 0x59, 0x13, 0x89, 0x90, 0xc0};
+	  memcpy(eth_hdr.dest_mac, mac_dest, 6);
+	  eth_hdr.eth_type = 0x0000;
 
-	HAL_UART_Receive_IT(&huart3, &rx_byte, 1);
-	HAL_UART_Transmit(&huart3, (uint8_t*)"AT+MODE?\r\n", 10, 100);
-	printf("ESPERANDO RESPUESTA\n");
-	osThreadFlagsWait(0x01, osFlagsWaitAny, osWaitForever);
-	printf("Respuesta HALOW: %s", rx_buffer);
-    osDelay(5000);
-  }
+	  TelemetryPacket tx_packet;
+	  uint8_t tx_frame[67];
+
+	  TelemetryPacket rx_packet;
+
+	  for(;;)
+	  {
+		osMessageQueueGet(txMailBoxHandle, &rx_packet, NULL, osWaitForever);
+	    memset(&tx_packet, 0, sizeof(TelemetryPacket));
+	    tx_packet.sync = 0xAA55;
+	    tx_packet.timestamp = HAL_GetTick();
+	    tx_packet.count = 1;
+	    tx_packet.gps_lat = 40416775;
+	    tx_packet.gps_lon = -3703790;
+	    tx_packet.gps_alt = 650;
+	    tx_packet.gps_fix_sats = 9;
+	    tx_packet.rf_rssi = -62;
+	    tx_packet.rf_snr = 15;
+	    tx_packet.rf_freq_dev = -112;
+	    tx_packet.rf_success_rate = 100;
+	    tx_packet.rf_noise_floor = 1;
+	    tx_packet.rf_tx_mcs = 10;
+	    tx_packet.halow_curr = rx_packet.halow_curr;
+	    tx_packet.halow_volt = 5000;
+	    tx_packet.main_bus_v = 5000;
+	    tx_packet.temp_chip = 40;
+	    tx_packet.env_press = 101325;
+	    tx_packet.ext_temp = rx_packet.ext_temp;
+	    tx_packet.int_temp = rx_packet.int_temp;
+	    tx_packet.ext_hum = rx_packet.ext_hum;
+	    tx_packet.rad_cps = 100;
+	    tx_packet.error_flags = rx_packet.error_flags;
+	    tx_packet.checksum = rx_packet.checksum;
+
+	    memcpy(tx_frame, &eth_hdr, 14);
+	    memcpy(tx_frame + 14, &tx_packet, 53);
+
+	    // 1. Vaciar basura del buffer
+	    uart_flush(&huart3);
+
+	    // 2. Enviar AT+TXDATA
+	    char cmd[] = "AT+TXDATA=67\r\n";
+	    HAL_UART_Transmit(&huart3, (uint8_t*)cmd, strlen(cmd), 100);
+
+	    // 3. Buscar "OK" byte a byte (ignora los mensajes de status)
+	    if (wait_for_ok(&huart3, 1000)) {
+	      HAL_UART_Transmit(&huart3, tx_frame, 67, 200);
+	      printf("PAQUETE ENVIADO.\r\n");
+	    } else {
+	      printf("AT: no se recibio OK\n");
+	    }
+
+	    osDelay(3000);
+	  }
   /* USER CODE END StartTXHalow */
 }
 
