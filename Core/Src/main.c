@@ -118,6 +118,8 @@ const osMessageQueueAttr_t txMailBox_attributes = {
 };
 /* USER CODE BEGIN PV */
 
+uint16_t count = 0;
+
 volatile SystemState_t current_state = STATE_INIT;
 
 // UART VARIABLES
@@ -715,9 +717,8 @@ void StartAcquire(void *argument)
 		TelemetryPacket packet;
 		readSensors(&packet);
 
-		if (osMessageQueuePut(txMailBoxHandle, &packet, 0, 100) == osOK) {
-			printf("Telemetry added to the mailbox");
-		}
+		// Add packet to the TX HALOW Mailbox
+		osMessageQueuePut(txMailBoxHandle, &packet, 0, 100);
 
 		// Adjust heater
 		error = set_point - packet.int_temp;
@@ -758,23 +759,24 @@ void StartTXHalow(void *argument)
 {
   /* USER CODE BEGIN StartTXHalow */
 	  osDelay(5000);
-	  printf("TX_HALOW INICIADO\r\n");
-
+	  // Ethernet header config
 	  EthernetHeader eth_hdr = {0};
 	  uint8_t mac_dest[] = {0x82, 0x59, 0x13, 0x89, 0x90, 0xc0};
 	  memcpy(eth_hdr.dest_mac, mac_dest, 6);
 	  eth_hdr.eth_type = 0x0000;
 
+	  // Telemetry packets
 	  TelemetryPacket tx_packet;
 	  uint8_t tx_frame[67];
-
-	  TelemetryPacket rx_packet;
+	  TelemetryPacket rx_packet; // Telemetry packet from ACQUIRE task
 
 	  for(;;)
 	  {
 		osMessageQueueGet(txMailBoxHandle, &rx_packet, NULL, osWaitForever);
-	    memset(&tx_packet, 0, sizeof(TelemetryPacket));
-	    tx_packet.sync = 0xAA55;
+	    memset(&tx_packet, 0, sizeof(TelemetryPacket)); // Clean the packet
+
+	    // Add the data to the final packet ready to transmit
+	    tx_packet.sync = rx_packet.sync;
 	    tx_packet.timestamp = HAL_GetTick();
 	    tx_packet.count = 1;
 	    tx_packet.gps_lat = 40416775;
@@ -799,22 +801,21 @@ void StartTXHalow(void *argument)
 	    tx_packet.error_flags = rx_packet.error_flags;
 	    tx_packet.checksum = rx_packet.checksum;
 
+	    // Concat the ethernet header to the packet
 	    memcpy(tx_frame, &eth_hdr, 14);
 	    memcpy(tx_frame + 14, &tx_packet, 53);
 
-	    // 1. Vaciar basura del buffer
 	    uart_flush(&huart3);
 
-	    // 2. Enviar AT+TXDATA
+	    // Send the packet via WiFi HaLow
 	    char cmd[] = "AT+TXDATA=67\r\n";
 	    HAL_UART_Transmit(&huart3, (uint8_t*)cmd, strlen(cmd), 100);
 
-	    // 3. Buscar "OK" byte a byte (ignora los mensajes de status)
 	    if (wait_for_ok(&huart3, 1000)) {
 	      HAL_UART_Transmit(&huart3, tx_frame, 67, 200);
-	      printf("PAQUETE ENVIADO.\r\n");
+	      printf("Packet sent.\r\n");
 	    } else {
-	      printf("AT: no se recibio OK\n");
+	      printf("AT: OK wasn't received\n");
 	    }
 
 	    osDelay(3000);
