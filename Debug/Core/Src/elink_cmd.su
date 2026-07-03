@@ -1,0 +1,16 @@
+../Drivers/CMSIS/Include/core_cm4.h:1933:34:__NVIC_SystemReset	4	static,ignoring_inline_asm
+../Core/Src/elink_cmd.c:15:10:Calculate_Checksum	32	static
+../Core/Src/elink_cmd.c:26:9:RECEIVE_ELINK_CMD	16	static
+../Core/Src/elink_cmd.c:95:6:CMD_SYS_RESET	8	static
+../Core/Src/elink_cmd.c:99:6:CMD_SYS_START	4	static
+../Core/Src/elink_cmd.c:103:6:CMD_SYS_STOP	4	static
+../Core/Src/elink_cmd.c:107:6:CMD_PING	4	static
+../Core/Src/elink_cmd.c:112:9:CMD_HEAT_MANUAL	16	static
+../Core/Src/elink_cmd.c:115:6:CMD_HEAT_AUTO	4	static
+../Core/Src/elink_cmd.c:120:6:CMD_HALOW_CONNECT	4	static
+../Core/Src/elink_cmd.c:123:6:CMD_SET_TX_POWER	16	static
+../Core/Src/elink_cmd.c:128:6:CMD_SET_MCS_MODE	16	static
+../Core/Src/elink_cmd.c:133:6:CMD_RF_SILENCE	4	static
+../Core/Src/elink_cmd.c:138:6:CMD_SAVE_DATA	4	static
+../Core/Src/elink_cmd.c:141:6:CMD_SEND_HALOW	4	static
+../Core/Src/elink_cmd.c:144:6:CMD_SEND_ELINK	4	static

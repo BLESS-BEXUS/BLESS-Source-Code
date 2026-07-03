@@ -1,0 +1,10 @@
+../Core/Src/w25log.c:15:16:slot_is_written	5
+../Core/Src/w25log.c:22:16:sector_is_erased	1
+../Core/Src/w25log.c:29:17:find_first_erased_sector	5
+../Core/Src/w25log.c:50:17:find_first_free_slot_in_sector	3
+../Core/Src/w25log.c:65:9:W25LOG_Init	4
+../Core/Src/w25log.c:95:6:W25LOG_Format	2
+../Core/Src/w25log.c:103:9:W25LOG_WritePacket	3
+../Core/Src/w25log.c:127:9:W25LOG_ReadLastPacket	2
+../Core/Src/w25log.c:140:6:W25LOG_ReadAll	3
+../Core/Src/w25log.c:155:6:W25LOG_DumpToUART	6

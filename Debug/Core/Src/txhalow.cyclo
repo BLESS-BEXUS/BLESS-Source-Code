@@ -1,0 +1,6 @@
+../Core/Src/txhalow.c:20:6:uart_flush	2
+../Core/Src/txhalow.c:25:9:wait_for_ok	4
+../Core/Src/txhalow.c:48:9:Tx_HaLow_Packet	3
+../Core/Src/txhalow.c:103:6:HaLow_Send_Config_Command	3
+../Core/Src/txhalow.c:127:9:Config_HaLow	1
+../Core/Src/txhalow.c:146:6:HaLow_Extract_Data	6

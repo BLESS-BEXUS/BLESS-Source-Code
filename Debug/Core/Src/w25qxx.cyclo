@@ -1,0 +1,11 @@
+../Core/Src/w25qxx.c:16:20:CS_LOW	1
+../Core/Src/w25qxx.c:17:20:CS_HIGH	1
+../Core/Src/w25qxx.c:19:16:SPI_TxRx	1
+../Core/Src/w25qxx.c:26:6:W25QXX_ReadID	1
+../Core/Src/w25qxx.c:35:9:W25QXX_ReadStatus	1
+../Core/Src/w25qxx.c:44:6:W25QXX_WaitBusy	2
+../Core/Src/w25qxx.c:50:13:W25QXX_WriteEnable	1
+../Core/Src/w25qxx.c:56:6:W25QXX_ReadData	2
+../Core/Src/w25qxx.c:68:6:W25QXX_PageProgram	2
+../Core/Src/w25qxx.c:82:6:W25QXX_SectorErase	1
+../Core/Src/w25qxx.c:93:9:W25QXX_Init	3

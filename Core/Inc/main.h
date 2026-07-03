@@ -37,6 +37,21 @@ extern "C" {
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
 
+typedef enum {
+	STATE_INIT,
+	STATE_IDDLE,
+	STATE_FLIGHT
+} SystemState_t;
+
+extern volatile SystemState_t current_state;
+
+typedef struct {
+    int32_t lat;
+    int32_t lon;
+    uint16_t alt;
+    int8_t fix_sats;
+} GPSData_t;
+
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/
@@ -61,6 +76,7 @@ void Error_Handler(void);
 /* Private defines -----------------------------------------------------------*/
 #define B1_Pin GPIO_PIN_13
 #define B1_GPIO_Port GPIOC
+#define B1_EXTI_IRQn EXTI15_10_IRQn
 #define GNSS_UART_RX_Pin GPIO_PIN_0
 #define GNSS_UART_RX_GPIO_Port GPIOC
 #define GNSS_UART_TX_Pin GPIO_PIN_1
@@ -75,22 +91,35 @@ void Error_Handler(void);
 #define USART_TX_GPIO_Port GPIOA
 #define USART_RX_Pin GPIO_PIN_3
 #define USART_RX_GPIO_Port GPIOA
-#define SCK_ETH_Pin GPIO_PIN_5
-#define SCK_ETH_GPIO_Port GPIOA
-#define MISO_ETH_Pin GPIO_PIN_6
-#define MISO_ETH_GPIO_Port GPIOA
-#define MOSI_ETH_Pin GPIO_PIN_7
-#define MOSI_ETH_GPIO_Port GPIOA
+#define SCK_F1_Pin GPIO_PIN_5
+#define SCK_F1_GPIO_Port GPIOA
+#define MISO_F1_Pin GPIO_PIN_6
+#define MISO_F1_GPIO_Port GPIOA
+#define MOSI_F1_Pin GPIO_PIN_7
+#define MOSI_F1_GPIO_Port GPIOA
 #define HALOW_UART_TX_Pin GPIO_PIN_4
 #define HALOW_UART_TX_GPIO_Port GPIOC
 #define HALOW_UART_RX_Pin GPIO_PIN_5
 #define HALOW_UART_RX_GPIO_Port GPIOC
+#define SCK_ETH_Pin GPIO_PIN_13
+#define SCK_ETH_GPIO_Port GPIOB
+#define MISO_ETH_Pin GPIO_PIN_14
+#define MISO_ETH_GPIO_Port GPIOB
+#define MOSI_ETH_Pin GPIO_PIN_15
+#define MOSI_ETH_GPIO_Port GPIOB
 #define CS_F2_Pin GPIO_PIN_7
 #define CS_F2_GPIO_Port GPIOC
-#define CS_F1_Pin GPIO_PIN_9
-#define CS_F1_GPIO_Port GPIOA
+#define GPIO_RED_LED_Pin GPIO_PIN_8
+#define GPIO_RED_LED_GPIO_Port GPIOC
+#define GPIO_YELLOW_LED_Pin GPIO_PIN_9
+#define GPIO_YELLOW_LED_GPIO_Port GPIOC
+#define GPIO_GREEN_LED_Pin GPIO_PIN_8
+#define GPIO_GREEN_LED_GPIO_Port GPIOA
+#define CS_ETH_Pin GPIO_PIN_9
+#define CS_ETH_GPIO_Port GPIOA
 #define RD_DATA_Pin GPIO_PIN_10
 #define RD_DATA_GPIO_Port GPIOA
+#define RD_DATA_EXTI_IRQn EXTI15_10_IRQn
 #define USB_DMINUS_Pin GPIO_PIN_11
 #define USB_DMINUS_GPIO_Port GPIOA
 #define USB_DPLUS_Pin GPIO_PIN_12
@@ -113,14 +142,16 @@ void Error_Handler(void);
 #define INT_ETH_GPIO_Port GPIOB
 #define RST_ETH_Pin GPIO_PIN_5
 #define RST_ETH_GPIO_Port GPIOB
-#define CS_ETH_Pin GPIO_PIN_6
-#define CS_ETH_GPIO_Port GPIOB
+#define CS_F1_Pin GPIO_PIN_6
+#define CS_F1_GPIO_Port GPIOB
 #define SCL_SENSORS_Pin GPIO_PIN_8
 #define SCL_SENSORS_GPIO_Port GPIOB
 #define SDA_SENSORS_Pin GPIO_PIN_9
 #define SDA_SENSORS_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
+
+#define UDP_PORT 5000
 
 /* USER CODE END Private defines */
 

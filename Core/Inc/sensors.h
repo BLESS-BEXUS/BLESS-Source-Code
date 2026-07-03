@@ -16,6 +16,7 @@
 #include "telemetry.h"
 
 void Sensors_Init();
+uint8_t SensorsSelfCheck();
 uint8_t readSensors(TelemetryPacket *packet);
 
 

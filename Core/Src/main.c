@@ -24,6 +24,14 @@
 /* USER CODE BEGIN Includes */
 #include "sensors.h"
 #include "telemetry.h"
+#include "txhalow.h"
+#include "w25qxx.h"
+#include "w25log.h"
+#include "minmea.h"
+#include "wizchip_port.h"
+#include "socket.h"
+#include "elink_cmd.h"
+
 #include <string.h>
 #include <stdio.h>
 /* USER CODE END Includes */
@@ -31,21 +39,18 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 
-typedef enum{
-	STATE_INIT,
-	STATE_IDDLE,
-	STATE_FLIGHT
-} SystemState_t;
-
-typedef struct {
-    uint8_t dest_mac[6]; // MAC del módulo que va a recibir (el STA)
-    uint8_t src_mac[6];  // MAC de este módulo (puede ir a 0)
-    uint16_t eth_type;   // Tipo de protocolo (el manual sugiere usar 0x0000 o 0x3030)
-} __attribute__((packed)) EthernetHeader;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+// Self check and initial config flags defines
+#define FLAG_SENSORS_OK (1 << 0)
+#define FLAG_HALOW_OK (1 << 1)
+#define FLAG_FLASH_OK (1 << 2)
+#define FLAG_ETHERNET_OK (1 << 3)
+
+// GNSS VARIABLES
+#define GPS_BUFFER_SIZE 100
 
 /* USER CODE END PD */
 
@@ -57,12 +62,15 @@ typedef struct {
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
 
+UART_HandleTypeDef hlpuart1;
+UART_HandleTypeDef huart2;
+UART_HandleTypeDef huart3;
+
+SPI_HandleTypeDef hspi1;
+SPI_HandleTypeDef hspi2;
 SPI_HandleTypeDef hspi3;
 
 TIM_HandleTypeDef htim3;
-
-UART_HandleTypeDef huart2;
-UART_HandleTypeDef huart3;
 
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
@@ -82,7 +90,7 @@ const osThreadAttr_t ACQUIRE_attributes = {
 osThreadId_t TXHALOWHandle;
 const osThreadAttr_t TXHALOW_attributes = {
   .name = "TXHALOW",
-  .stack_size = 256 * 4,
+  .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityAboveNormal,
 };
 /* Definitions for LOGDATA */
@@ -120,12 +128,38 @@ const osMessageQueueAttr_t txMailBox_attributes = {
 
 uint16_t count = 0;
 
+// Initial check flags
+osEventFlagsId_t InitFlags;
+
 volatile SystemState_t current_state = STATE_INIT;
 
 // UART VARIABLES
 uint8_t rx_byte;
-uint8_t rx_buffer[100];
+uint8_t rx_buffer[512];
 uint16_t rx_index = 0;
+
+TelemetryPacket rf_data_cache;
+
+// E-LINK COMMANDS VARIABLES
+
+volatile uint8_t new_tx_power = 9;
+volatile uint8_t flag_update_tx_power = 0;
+
+volatile uint8_t new_mcs = 0;
+volatile uint8_t flag_update_mcs = 0;
+
+// E-LINK RX variables
+uint8_t eth_rx_buffer[256];
+
+// GNSS VARIABLES
+char gps_buffer[GPS_BUFFER_SIZE];
+uint8_t gps_idx = 0;
+uint8_t gps_rx_byte;
+
+GPSData_t actual_gps = {0};
+osMutexId_t mtxGPSHandle;
+
+volatile uint16_t rad_pulse_count = 0;
 
 /* USER CODE END PV */
 
@@ -137,6 +171,9 @@ static void MX_TIM3_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_SPI3_Init(void);
 static void MX_USART3_UART_Init(void);
+static void MX_SPI1_Init(void);
+static void MX_LPUART1_UART_Init(void);
+static void MX_SPI2_Init(void);
 void StartDefaultTask(void *argument);
 void StartAcquire(void *argument);
 void StartTXHalow(void *argument);
@@ -187,7 +224,20 @@ int main(void)
   MX_I2C1_Init();
   MX_SPI3_Init();
   MX_USART3_UART_Init();
+  MX_SPI1_Init();
+  MX_LPUART1_UART_Init();
+  MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
+  HAL_UART_Receive_IT(&hlpuart1, &gps_rx_byte, 1);
+
+  HAL_UART_Receive_IT(&huart3, &rx_byte, 1);
+  InitFlags = osEventFlagsNew(NULL);
+  if(InitFlags == NULL){
+	  HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_SET);
+	  printf("NOT ENOUGHT RAM TO CREATE FLAGS");
+	  Error_Handler();
+  }
+
 
   /* USER CODE END 2 */
 
@@ -195,7 +245,7 @@ int main(void)
   osKernelInitialize();
 
   /* USER CODE BEGIN RTOS_MUTEX */
-  /* add mutexes, ... */
+  mtxGPSHandle = osMutexNew(NULL);
   /* USER CODE END RTOS_MUTEX */
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
@@ -358,6 +408,190 @@ static void MX_I2C1_Init(void)
 }
 
 /**
+  * @brief LPUART1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_LPUART1_UART_Init(void)
+{
+
+  /* USER CODE BEGIN LPUART1_Init 0 */
+
+  /* USER CODE END LPUART1_Init 0 */
+
+  /* USER CODE BEGIN LPUART1_Init 1 */
+
+  /* USER CODE END LPUART1_Init 1 */
+  hlpuart1.Instance = LPUART1;
+  hlpuart1.Init.BaudRate = 38400;
+  hlpuart1.Init.WordLength = UART_WORDLENGTH_8B;
+  hlpuart1.Init.StopBits = UART_STOPBITS_1;
+  hlpuart1.Init.Parity = UART_PARITY_NONE;
+  hlpuart1.Init.Mode = UART_MODE_TX_RX;
+  hlpuart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  hlpuart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  hlpuart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&hlpuart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN LPUART1_Init 2 */
+
+  /* USER CODE END LPUART1_Init 2 */
+
+}
+
+/**
+  * @brief USART2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART2_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART2_Init 0 */
+
+  /* USER CODE END USART2_Init 0 */
+
+  /* USER CODE BEGIN USART2_Init 1 */
+
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 115200;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart2.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart2.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART2_Init 2 */
+
+  /* USER CODE END USART2_Init 2 */
+
+}
+
+/**
+  * @brief USART3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART3_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART3_Init 0 */
+
+  /* USER CODE END USART3_Init 0 */
+
+  /* USER CODE BEGIN USART3_Init 1 */
+
+  /* USER CODE END USART3_Init 1 */
+  huart3.Instance = USART3;
+  huart3.Init.BaudRate = 115200;
+  huart3.Init.WordLength = UART_WORDLENGTH_8B;
+  huart3.Init.StopBits = UART_STOPBITS_1;
+  huart3.Init.Parity = UART_PARITY_NONE;
+  huart3.Init.Mode = UART_MODE_TX_RX;
+  huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart3.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart3.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart3.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART3_Init 2 */
+
+  /* USER CODE END USART3_Init 2 */
+
+}
+
+/**
+  * @brief SPI1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI1_Init(void)
+{
+
+  /* USER CODE BEGIN SPI1_Init 0 */
+
+  /* USER CODE END SPI1_Init 0 */
+
+  /* USER CODE BEGIN SPI1_Init 1 */
+
+  /* USER CODE END SPI1_Init 1 */
+  /* SPI1 parameter configuration*/
+  hspi1.Instance = SPI1;
+  hspi1.Init.Mode = SPI_MODE_MASTER;
+  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi1.Init.NSS = SPI_NSS_SOFT;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi1.Init.CRCPolynomial = 7;
+  hspi1.Init.CRCLength = SPI_CRC_LENGTH_DATASIZE;
+  hspi1.Init.NSSPMode = SPI_NSS_PULSE_ENABLE;
+  if (HAL_SPI_Init(&hspi1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI1_Init 2 */
+
+  /* USER CODE END SPI1_Init 2 */
+
+}
+
+/**
+  * @brief SPI2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI2_Init(void)
+{
+
+  /* USER CODE BEGIN SPI2_Init 0 */
+
+  /* USER CODE END SPI2_Init 0 */
+
+  /* USER CODE BEGIN SPI2_Init 1 */
+
+  /* USER CODE END SPI2_Init 1 */
+  /* SPI2 parameter configuration*/
+  hspi2.Instance = SPI2;
+  hspi2.Init.Mode = SPI_MODE_MASTER;
+  hspi2.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi2.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi2.Init.NSS = SPI_NSS_SOFT;
+  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
+  hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi2.Init.CRCPolynomial = 7;
+  hspi2.Init.CRCLength = SPI_CRC_LENGTH_DATASIZE;
+  hspi2.Init.NSSPMode = SPI_NSS_PULSE_ENABLE;
+  if (HAL_SPI_Init(&hspi2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI2_Init 2 */
+
+  /* USER CODE END SPI2_Init 2 */
+
+}
+
+/**
   * @brief SPI3 Initialization Function
   * @param None
   * @retval None
@@ -447,76 +681,6 @@ static void MX_TIM3_Init(void)
 }
 
 /**
-  * @brief USART2 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_USART2_UART_Init(void)
-{
-
-  /* USER CODE BEGIN USART2_Init 0 */
-
-  /* USER CODE END USART2_Init 0 */
-
-  /* USER CODE BEGIN USART2_Init 1 */
-
-  /* USER CODE END USART2_Init 1 */
-  huart2.Instance = USART2;
-  huart2.Init.BaudRate = 115200;
-  huart2.Init.WordLength = UART_WORDLENGTH_8B;
-  huart2.Init.StopBits = UART_STOPBITS_1;
-  huart2.Init.Parity = UART_PARITY_NONE;
-  huart2.Init.Mode = UART_MODE_TX_RX;
-  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
-  huart2.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart2.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  if (HAL_UART_Init(&huart2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USART2_Init 2 */
-
-  /* USER CODE END USART2_Init 2 */
-
-}
-
-/**
-  * @brief USART3 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_USART3_UART_Init(void)
-{
-
-  /* USER CODE BEGIN USART3_Init 0 */
-
-  /* USER CODE END USART3_Init 0 */
-
-  /* USER CODE BEGIN USART3_Init 1 */
-
-  /* USER CODE END USART3_Init 1 */
-  huart3.Instance = USART3;
-  huart3.Init.BaudRate = 115200;
-  huart3.Init.WordLength = UART_WORDLENGTH_8B;
-  huart3.Init.StopBits = UART_STOPBITS_1;
-  huart3.Init.Parity = UART_PARITY_NONE;
-  huart3.Init.Mode = UART_MODE_TX_RX;
-  huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart3.Init.OverSampling = UART_OVERSAMPLING_16;
-  huart3.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart3.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  if (HAL_UART_Init(&huart3) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USART3_Init 2 */
-
-  /* USER CODE END USART3_Init 2 */
-
-}
-
-/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -536,16 +700,22 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(CS_F2_GPIO_Port, CS_F2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, CS_F2_Pin|GPIO_RED_LED_Pin|GPIO_YELLOW_LED_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(CS_F1_GPIO_Port, CS_F1_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(CS_ETH_GPIO_Port, CS_ETH_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(CS_ETEMP_GPIO_Port, CS_ETEMP_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, INT_ETH_Pin|RST_ETH_Pin|CS_ETH_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(INT_ETH_GPIO_Port, INT_ETH_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, RST_ETH_Pin|CS_F1_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
@@ -553,47 +723,37 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : GNSS_UART_RX_Pin GNSS_UART_TX_Pin */
-  GPIO_InitStruct.Pin = GNSS_UART_RX_Pin|GNSS_UART_TX_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-  GPIO_InitStruct.Alternate = GPIO_AF8_LPUART1;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
   /*Configure GPIO pins : ITEMP_ALERT_Pin ETEMP_ALERT_Pin */
   GPIO_InitStruct.Pin = ITEMP_ALERT_Pin|ETEMP_ALERT_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : HL_PWR_A_Pin RD_DATA_Pin */
-  GPIO_InitStruct.Pin = HL_PWR_A_Pin|RD_DATA_Pin;
+  /*Configure GPIO pin : HL_PWR_A_Pin */
+  GPIO_InitStruct.Pin = HL_PWR_A_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  HAL_GPIO_Init(HL_PWR_A_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : SCK_ETH_Pin MISO_ETH_Pin MOSI_ETH_Pin */
-  GPIO_InitStruct.Pin = SCK_ETH_Pin|MISO_ETH_Pin|MOSI_ETH_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-  GPIO_InitStruct.Alternate = GPIO_AF5_SPI1;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : CS_F2_Pin */
-  GPIO_InitStruct.Pin = CS_F2_Pin;
+  /*Configure GPIO pins : CS_F2_Pin GPIO_RED_LED_Pin GPIO_YELLOW_LED_Pin */
+  GPIO_InitStruct.Pin = CS_F2_Pin|GPIO_RED_LED_Pin|GPIO_YELLOW_LED_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(CS_F2_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : CS_F1_Pin */
-  GPIO_InitStruct.Pin = CS_F1_Pin;
+  /*Configure GPIO pins : GPIO_GREEN_LED_Pin CS_ETH_Pin */
+  GPIO_InitStruct.Pin = GPIO_GREEN_LED_Pin|CS_ETH_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(CS_F1_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : RD_DATA_Pin */
+  GPIO_InitStruct.Pin = RD_DATA_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(RD_DATA_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : USB_DMINUS_Pin USB_DPLUS_Pin */
   GPIO_InitStruct.Pin = USB_DMINUS_Pin|USB_DPLUS_Pin;
@@ -610,12 +770,16 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(CS_ETEMP_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : INT_ETH_Pin RST_ETH_Pin CS_ETH_Pin */
-  GPIO_InitStruct.Pin = INT_ETH_Pin|RST_ETH_Pin|CS_ETH_Pin;
+  /*Configure GPIO pins : INT_ETH_Pin RST_ETH_Pin CS_F1_Pin */
+  GPIO_InitStruct.Pin = INT_ETH_Pin|RST_ETH_Pin|CS_F1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
@@ -624,41 +788,65 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-    if (huart->Instance == USART3) {
-    	if(rx_index < 99){
-            rx_buffer[rx_index] = rx_byte;
-            rx_index++;
-    	}
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+    if(GPIO_Pin == RD_DATA_Pin) {
+        rad_pulse_count++;
+    }
+}
 
-        if (rx_byte == '\n') {
-        	rx_buffer[rx_index] = '\0';
-            osThreadFlagsSet(TXHALOWHandle, 0x01);
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+
+    //============== USART3 ==============
+
+    if (huart->Instance == USART3)
+    {
+        if (rx_byte == '\n' || rx_byte == '\r') {
+            if (rx_index > 1) {
+                rx_buffer[rx_index] = '\0';
+                rx_index = 0;
+                osThreadFlagsSet(TXHALOWHandle, 0x01);
+            } else {
+                rx_index = 0;
+            }
         } else {
-            HAL_UART_Receive_IT(huart, &rx_byte, 1);
+            if (rx_index < 510) {
+                rx_buffer[rx_index] = rx_byte;
+                rx_index++;
+            }
         }
+        HAL_UART_Receive_IT(huart, &rx_byte, 1);
     }
+
+    //============== LPUART1 ==============
+
+    else if (huart->Instance == LPUART1)
+    {
+        if (gps_idx < 99) {
+            gps_buffer[gps_idx++] = (char)gps_rx_byte;
+        }
+
+        if (gps_rx_byte == '\n') {
+            gps_buffer[gps_idx] = '\0';
+            gps_idx = 0;
+
+            if (RXGNSSHandle != NULL) {
+                vTaskNotifyGiveFromISR((TaskHandle_t)RXGNSSHandle, NULL);
+            }
+        }
+        HAL_UART_Receive_IT(huart, &gps_rx_byte, 1);
+    }
+
 }
 
-// Función auxiliar: vaciar el UART de basura
-static void uart_flush(UART_HandleTypeDef *huart) {
-  uint8_t dummy;
-  while (HAL_UART_Receive(huart, &dummy, 1, 5) == HAL_OK);
-}
 
-// Función auxiliar: leer hasta encontrar "OK" o timeout
-static int wait_for_ok(UART_HandleTypeDef *huart, uint32_t timeout_ms) {
-  uint8_t byte;
-  uint8_t prev = 0;
-  uint32_t start = HAL_GetTick();
-
-  while ((HAL_GetTick() - start) < timeout_ms) {
-    if (HAL_UART_Receive(huart, &byte, 1, 10) == HAL_OK) {
-      if (prev == 'O' && byte == 'K') return 1;
-      prev = byte;
+void log_print_callback(uint32_t index, const uint8_t *packet_data, void *ctx) {
+    printf("Paquete #%lu: ", index);
+    for (int i = 0; i < W25LOG_PACKET_SIZE; i++) {
+        printf("%02X ", packet_data[i]);
     }
-  }
-  return 0;
+    printf("\r\n");
 }
 
 /* USER CODE END 4 */
@@ -706,7 +894,25 @@ void StartAcquire(void *argument)
   float error, p, i, d;
   float output_power = 0.0;
 
-  current_state = STATE_FLIGHT;
+
+  /** Start sensors self check**/
+  HAL_GPIO_WritePin(GPIO_YELLOW_LED_GPIO_Port, GPIO_YELLOW_LED_Pin, GPIO_PIN_SET);
+
+
+  if(SensorsSelfCheck()){
+	  osEventFlagsSet(InitFlags, FLAG_SENSORS_OK);
+  }
+
+
+  osEventFlagsWait(InitFlags, FLAG_SENSORS_OK | FLAG_HALOW_OK | FLAG_FLASH_OK | FLAG_ETHERNET_OK, osFlagsWaitAll, osWaitForever);
+
+
+  current_state = STATE_IDDLE;
+
+  if(current_state == STATE_FLIGHT){
+	  HAL_GPIO_WritePin(GPIO_YELLOW_LED_GPIO_Port, GPIO_YELLOW_LED_Pin, GPIO_PIN_RESET);
+	  HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_SET);
+  }
 
   uint32_t previousWakeTime = osKernelGetTickCount();
 
@@ -714,11 +920,29 @@ void StartAcquire(void *argument)
   for(;;)
   {
 	if(current_state == STATE_FLIGHT){
+		HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_SET);
+		HAL_GPIO_WritePin(GPIO_YELLOW_LED_GPIO_Port, GPIO_YELLOW_LED_Pin, GPIO_PIN_RESET);
+
 		TelemetryPacket packet;
 		readSensors(&packet);
 
+		taskENTER_CRITICAL();
+		packet.rad_cps = rad_pulse_count;
+		rad_pulse_count = 0;
+		taskEXIT_CRITICAL();
+
+		if (osMutexAcquire(mtxGPSHandle, osWaitForever) == osOK)
+		{
+		    packet.gps_lat = actual_gps.lat;
+		    packet.gps_lon = actual_gps.lon;
+		    packet.gps_alt = actual_gps.alt;
+		    packet.gps_fix_sats = actual_gps.fix_sats;
+		    osMutexRelease(mtxGPSHandle);
+		}
+
 		// Add packet to the TX HALOW Mailbox
 		osMessageQueuePut(txMailBoxHandle, &packet, 0, 100);
+		osMessageQueuePut(logDataQueueHandle, &packet, 0, 100);
 
 		// Adjust heater
 		error = set_point - packet.int_temp;
@@ -737,10 +961,11 @@ void StartAcquire(void *argument)
 		output_power  = (output_power < 0.0) ? 0.0 : output_power;
 
 		// Update PWM with ouputpower
-
-		printTelemetry(&packet); // Just during tests
 	}
-
+	else if(current_state == STATE_IDDLE){
+		HAL_GPIO_WritePin(GPIO_YELLOW_LED_GPIO_Port, GPIO_YELLOW_LED_Pin, GPIO_PIN_SET);
+		HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_SET);
+	}
 
 	previousWakeTime += 1000;
 	osDelayUntil(previousWakeTime);
@@ -759,66 +984,62 @@ void StartTXHalow(void *argument)
 {
   /* USER CODE BEGIN StartTXHalow */
 	  osDelay(5000);
-	  // Ethernet header config
-	  EthernetHeader eth_hdr = {0};
-	  uint8_t mac_dest[] = {0x82, 0x59, 0x13, 0x89, 0x90, 0xc0};
-	  memcpy(eth_hdr.dest_mac, mac_dest, 6);
-	  eth_hdr.eth_type = 0x0000;
+	  if(SensorsSelfCheck()){
+		  osEventFlagsSet(InitFlags, FLAG_HALOW_OK);
+	  }
 
-	  // Telemetry packets
-	  TelemetryPacket tx_packet;
-	  uint8_t tx_frame[67];
 	  TelemetryPacket rx_packet; // Telemetry packet from ACQUIRE task
+	  rx_index = 0;
+	  memset(rx_buffer, 0, sizeof(rx_buffer));
+
+	  memset(&rf_data_cache, 0, sizeof(TelemetryPacket));
+
+	  uint32_t last_tx_time = 0;
+	  uint32_t received_flags;
 
 	  for(;;)
 	  {
-		osMessageQueueGet(txMailBoxHandle, &rx_packet, NULL, osWaitForever);
-	    memset(&tx_packet, 0, sizeof(TelemetryPacket)); // Clean the packet
+		  received_flags = osThreadFlagsWait(0x01, osFlagsWaitAny, 100);
 
-	    // Add the data to the final packet ready to transmit
-	    tx_packet.sync = rx_packet.sync;
-	    tx_packet.timestamp = HAL_GetTick();
-	    tx_packet.count = 1;
-	    tx_packet.gps_lat = 40416775;
-	    tx_packet.gps_lon = -3703790;
-	    tx_packet.gps_alt = 650;
-	    tx_packet.gps_fix_sats = 9;
-	    tx_packet.rf_rssi = -62;
-	    tx_packet.rf_snr = 15;
-	    tx_packet.rf_freq_dev = -112;
-	    tx_packet.rf_success_rate = 100;
-	    tx_packet.rf_noise_floor = 1;
-	    tx_packet.rf_tx_mcs = 10;
-	    tx_packet.halow_curr = rx_packet.halow_curr;
-	    tx_packet.halow_volt = 5000;
-	    tx_packet.main_bus_v = 5000;
-	    tx_packet.temp_chip = 40;
-	    tx_packet.env_press = 101325;
-	    tx_packet.ext_temp = rx_packet.ext_temp;
-	    tx_packet.int_temp = rx_packet.int_temp;
-	    tx_packet.ext_hum = rx_packet.ext_hum;
-	    tx_packet.rad_cps = 100;
-	    tx_packet.error_flags = rx_packet.error_flags;
-	    tx_packet.checksum = rx_packet.checksum;
+		  if((received_flags & osFlagsError) == 0 && (received_flags & 0x01)){
+			  HaLow_Extract_Data((char *)rx_buffer, &rf_data_cache);
+		  }
+		  if(flag_update_tx_power){
+			  char str_power_tx[8];
+			  snprintf(str_power_tx, sizeof(str_power_tx), "%d", new_tx_power);
+			  HaLow_Send_Config_Command(&huart3, "TXPOWER", str_power_tx);
+			  flag_update_tx_power = 0;
+		  }
+		  if(flag_update_mcs){
+			  char str_mcs[8];
+			  snprintf(str_mcs, sizeof(str_mcs), "%d", new_mcs);
+			  HaLow_Send_Config_Command(&huart3, "TX_MCS", str_mcs);
+			  flag_update_mcs = 0;
+		  }
+		  if(current_state == STATE_FLIGHT){
+			  HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_SET);
+			  HAL_GPIO_WritePin(GPIO_YELLOW_LED_GPIO_Port, GPIO_YELLOW_LED_Pin, GPIO_PIN_RESET);
 
-	    // Concat the ethernet header to the packet
-	    memcpy(tx_frame, &eth_hdr, 14);
-	    memcpy(tx_frame + 14, &tx_packet, 53);
+			  if((HAL_GetTick() -  last_tx_time) >= DUTY_CYCLE_MS){
+				  osMessageQueueGet(txMailBoxHandle, &rx_packet, NULL, 0);
 
-	    uart_flush(&huart3);
+				  rx_packet.rf_rssi = rf_data_cache.rf_rssi;
+				  rx_packet.rf_snr = rf_data_cache.rf_snr;
+			      rx_packet.rf_noise_floor = rf_data_cache.rf_noise_floor;
+			      rx_packet.rf_freq_dev = rf_data_cache.rf_freq_dev;
+			      rx_packet.rf_tx_mcs = rf_data_cache.rf_tx_mcs;
+			      rx_packet.temp_chip = rf_data_cache.temp_chip;
 
-	    // Send the packet via WiFi HaLow
-	    char cmd[] = "AT+TXDATA=67\r\n";
-	    HAL_UART_Transmit(&huart3, (uint8_t*)cmd, strlen(cmd), 100);
+				  printTelemetry(&rx_packet); // Just during tests
 
-	    if (wait_for_ok(&huart3, 1000)) {
-	      HAL_UART_Transmit(&huart3, tx_frame, 67, 200);
-	      printf("Packet sent.\r\n");
-	    } else {
-	      printf("AT: OK wasn't received\n");
-	    }
-
-	    osDelay(3000);
+				  Tx_HaLow_Packet(&huart3, rx_packet);
+				  last_tx_time = HAL_GetTick();
+			  }
+		  }
+		  else if(current_state == STATE_IDDLE){
+			  HAL_GPIO_WritePin(GPIO_YELLOW_LED_GPIO_Port, GPIO_YELLOW_LED_Pin, GPIO_PIN_SET);
+			  HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_SET);
+		  }
 	  }
   /* USER CODE END StartTXHalow */
 }
@@ -833,11 +1054,47 @@ void StartTXHalow(void *argument)
 void StartLogData(void *argument)
 {
   /* USER CODE BEGIN StartLogData */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
+	 W25QXX_ID_t flash_id;
+	 W25LOG_State_t log_state;
+	 TelemetryPacket packet_to_log;
+
+	 osDelay(2000);
+
+	 uint8_t flash_present = W25QXX_Init(&flash_id);
+	 uint8_t log_ready = 0;
+
+	  if (flash_present) {
+	      log_ready = W25LOG_Init(&log_state);
+	  } else {
+	      printf("W25QXX NO RESPONDE\r\n");
+	  }
+
+	  if (flash_present && log_ready) {
+	      osEventFlagsSet(InitFlags, FLAG_FLASH_OK);
+	      printf("Flash Ready. Storaged Packets: %lu\r\n", log_state.packet_count);
+	  } else {
+	      printf("Flash Init Error \r\n");
+	  }
+	  W25LOG_Format(&log_state);
+
+	  W25LOG_DumpToUART(&huart2, &log_state);
+
+	  /* Infinite loop */
+	  for(;;)
+	  {
+		if(current_state == STATE_FLIGHT){
+			if (osMessageQueueGet(logDataQueueHandle, &packet_to_log, NULL, osWaitForever) == osOK) {
+				if (flash_present && log_ready) {
+					if (W25LOG_WritePacket(&log_state, (uint8_t*)&packet_to_log) != 0) {
+						printf("Full Flash\r\n");
+					}
+				}
+			}
+		}else{
+			osDelay(50);
+		}
+
+	  }
   /* USER CODE END StartLogData */
 }
 
@@ -852,10 +1109,54 @@ void StartRXGNSS(void *argument)
 {
   /* USER CODE BEGIN StartRXGNSS */
   /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
+	for(;;)
+	  {
+	    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+	    switch (minmea_sentence_id(gps_buffer, false))
+	    {
+	      case MINMEA_SENTENCE_GGA:
+	      {
+	        struct minmea_sentence_gga gga;
+	        if (minmea_parse_gga(&gga, gps_buffer))
+	        {
+	        	float lat_decimal = minmea_tocoord(&gga.latitude);
+	        	float lon_decimal = minmea_tocoord(&gga.longitude);
+
+	        	int32_t lat_fixed = (int32_t)(lat_decimal * 10000000.0f);
+	        	int32_t lon_fixed = (int32_t)(lon_decimal * 10000000.0f);
+	        	uint16_t alt = (uint16_t)minmea_tofloat(&gga.altitude);
+
+	        	uint8_t fix = (gga.fix_quality > 3) ? 3 : gga.fix_quality;
+	        	uint8_t sats = (gga.satellites_tracked > 63) ? 63 : gga.satellites_tracked;
+	        	int8_t fix_sats_packed = (int8_t)((fix << 6) | sats);
+
+	        	if (osMutexAcquire(mtxGPSHandle, osWaitForever) == osOK)
+	        	{
+	        	    actual_gps.lat = lat_fixed;
+	        	    actual_gps.lon = lon_fixed;
+	        	    actual_gps.alt = alt;
+	        	    actual_gps.fix_sats = fix_sats_packed;
+	        	    osMutexRelease(mtxGPSHandle);
+	        	}
+
+	        }
+	        break;
+	      }
+
+	      case MINMEA_SENTENCE_RMC:
+	      {
+	        struct minmea_sentence_rmc rmc;
+	        if (minmea_parse_rmc(&rmc, gps_buffer)) {
+
+	        }
+	        break;
+	      }
+
+	      default:
+	        break;
+	    }
+	  }
   /* USER CODE END StartRXGNSS */
 }
 
@@ -869,11 +1170,59 @@ void StartRXGNSS(void *argument)
 void StartRXELink(void *argument)
 {
   /* USER CODE BEGIN StartRXELink */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
+	if(W5500_Init() == 1){
+	      osEventFlagsSet(InitFlags, FLAG_ETHERNET_OK);
+	  }
+
+	  if(socket(0, Sn_MR_UDP, UDP_PORT, 0) != 0) {
+	      printf("Error while opening UDP port for RX\r\n");
+	  }
+
+	  /* Infinite loop */
+	  for(;;)
+	  {
+	      uint16_t data_len = getSn_RX_RSR(0);
+
+	      if(data_len > 0)
+	      {
+	          uint8_t target_ip[4];
+	          uint16_t target_port;
+
+	          int32_t len = recvfrom(0, eth_rx_buffer, data_len, target_ip, &target_port);
+
+	          if(len == sizeof(ELinkCommand)) {
+
+	              // Map from raw to struct
+	              ELinkCommand* incoming_cmd = (ELinkCommand*)eth_rx_buffer;
+	              uint8_t result = RECEIVE_ELINK_CMD(incoming_cmd);
+
+	              // Callback to the GS
+	              switch(result) {
+	                  case 0:
+	                      sendto(0, (uint8_t*)"ACK: CMD EXECTUTED\r\n", 19, target_ip, target_port);
+	                      printf("Command %d processed.\r\n", incoming_cmd->cmd_id);
+	                      break;
+	                  case 1:
+	                      sendto(0, (uint8_t*)"ERR: SYNC WORD\r\n", 16, target_ip, target_port);
+	                      printf("Sync error.\r\n");
+	                      break;
+	                  case 2:
+	                      sendto(0, (uint8_t*)"ERR: CHECKSUM\r\n", 15, target_ip, target_port);
+	                      printf("Checksum Error.\r\n");
+	                      break;
+	                  case 3:
+	                      sendto(0, (uint8_t*)"ERR: UNKNOWN ID\r\n", 17, target_ip, target_port);
+	                      printf("Command %d doesn't exist.\r\n", incoming_cmd->cmd_id);
+	                      break;
+	              }
+	          }
+	          else {
+	              printf("Wrong Size (%ld bytes, expected %d).\r\n", len, sizeof(ELinkCommand));
+	          }
+	      }
+
+	      osDelay(50);
+	  }
   /* USER CODE END StartRXELink */
 }
 

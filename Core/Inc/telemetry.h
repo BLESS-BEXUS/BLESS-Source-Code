@@ -17,7 +17,7 @@ typedef struct TelemetryPacket{
 	// GNSS
 	int32_t gps_lat;
 	int32_t gps_lon;
-	int16_t gps_alt;
+	uint16_t gps_alt;
 	int8_t gps_fix_sats;
 
 	// RF PERFORMANCE
@@ -27,12 +27,12 @@ typedef struct TelemetryPacket{
 	uint8_t rf_success_rate;
 	int16_t rf_noise_floor;
 	uint8_t rf_tx_mcs;
+	uint16_t rf_volt; // RF Log Detector
 
 	// HARDWARE
-	uint16_t halow_volt;
 	uint16_t halow_curr;
 	int16_t temp_chip;
-	uint16_t main_bus_v;
+	uint16_t heater_power;
 
 	// ENVIROMENT
 	uint32_t env_press;

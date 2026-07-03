@@ -45,7 +45,15 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.h \
  ../Core/Inc/sensors.h ../Core/Inc/max31865.h ../Core/Inc/main.h \
  ../Core/Inc/tmp102.h ../Core/Inc/ina219.h ../Core/Inc/sht4x.h \
- ../Core/Inc/telemetry.h ../Core/Inc/telemetry.h
+ ../Core/Inc/telemetry.h ../Core/Inc/telemetry.h ../Core/Inc/txhalow.h \
+ ../Core/Inc/w25qxx.h ../Core/Inc/w25log.h ../Core/Inc/w25qxx.h \
+ ../Core/Inc/minmea.h \
+ C:/Users/Mario/Documents/BLESS/BLESS-Source-Code/Drivers/Ethernet_W5500/wizchip_port.h \
+ C:/Users/Mario/Documents/BLESS/BLESS-Source-Code/Drivers/Ethernet_W5500/socket.h \
+ C:/Users/Mario/Documents/BLESS/BLESS-Source-Code/Drivers/Ethernet_W5500/../Ethernet_W5500/wizchip_conf.h \
+ C:/Users/Mario/Documents/BLESS/BLESS-Source-Code/Drivers/Ethernet_W5500/../Ethernet_W5500/W5500/w5500.h \
+ C:/Users/Mario/Documents/BLESS/BLESS-Source-Code/Drivers/Ethernet_W5500/wizchip_conf.h \
+ ../Core/Inc/elink_cmd.h
 ../Core/Inc/main.h:
 ../Drivers/STM32L4xx_HAL_Driver/Inc/stm32l4xx_hal.h:
 ../Core/Inc/stm32l4xx_hal_conf.h:
@@ -99,3 +107,14 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Core/Inc/sht4x.h:
 ../Core/Inc/telemetry.h:
 ../Core/Inc/telemetry.h:
+../Core/Inc/txhalow.h:
+../Core/Inc/w25qxx.h:
+../Core/Inc/w25log.h:
+../Core/Inc/w25qxx.h:
+../Core/Inc/minmea.h:
+C:/Users/Mario/Documents/BLESS/BLESS-Source-Code/Drivers/Ethernet_W5500/wizchip_port.h:
+C:/Users/Mario/Documents/BLESS/BLESS-Source-Code/Drivers/Ethernet_W5500/socket.h:
+C:/Users/Mario/Documents/BLESS/BLESS-Source-Code/Drivers/Ethernet_W5500/../Ethernet_W5500/wizchip_conf.h:
+C:/Users/Mario/Documents/BLESS/BLESS-Source-Code/Drivers/Ethernet_W5500/../Ethernet_W5500/W5500/w5500.h:
+C:/Users/Mario/Documents/BLESS/BLESS-Source-Code/Drivers/Ethernet_W5500/wizchip_conf.h:
+../Core/Inc/elink_cmd.h:

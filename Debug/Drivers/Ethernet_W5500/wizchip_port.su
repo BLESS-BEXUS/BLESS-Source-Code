@@ -1,0 +1,5 @@
+../Drivers/Ethernet_W5500/wizchip_port.c:18:6:W5500_Select	8	static
+../Drivers/Ethernet_W5500/wizchip_port.c:22:6:W5500_Deselect	8	static
+../Drivers/Ethernet_W5500/wizchip_port.c:29:9:W5500_ReadByte	16	static
+../Drivers/Ethernet_W5500/wizchip_port.c:38:6:W5500_WriteByte	16	static
+../Drivers/Ethernet_W5500/wizchip_port.c:45:8:W5500_Init	80	static

@@ -7,6 +7,8 @@
 
 #include "sensors.h"
 #include "main.h"
+#include "cmsis_os.h"
+
 #include <stdio.h>
 
 extern I2C_HandleTypeDef hi2c1;
@@ -17,14 +19,51 @@ extern UART_HandleTypeDef huart2;
 INA219_t ina;
 
 
-
-
 void Sensors_Init(){
 	MAX31865_Init(&hspi3, CS_ETEMP_GPIO_Port, CS_ETEMP_Pin);
 	if(INA219_INIT(&hi2c1, &ina, INA219_I2C_ADDRESS_GND_GND ,INA219_R100, 3.2) != 0){
 		printf("ERROR INITIALIZATING INA");
 	}
 
+}
+
+uint8_t SensorsSelfCheck(){
+	float internalTemp = TMP102_Read_Temp(&hi2c1, TMP102_I2C_ADDRESS_GND);
+	osDelay(500);
+	float externalTemp = MAX31865_Read_Temp(&hspi3, CS_ETEMP_GPIO_Port, CS_ETEMP_Pin);
+	osDelay(500);
+	float rh = SHT4X_Measure_High(&hi2c1);
+	osDelay(500);
+
+	printf("=====================================\r\n");
+	printf("======= SELF CHECK INITIALIZED ======\r\n");
+	printf("=====================================\r\n");
+
+	if(internalTemp < -100 && internalTemp > 150){
+		return 0;
+	} else {
+		printf("TMP102 Correctly Initialized\r\n");
+	}
+
+	if(externalTemp == -318.65){
+		return 0;
+	}else{
+		printf("MAX31865 Correctly Initialized\r\n");
+	}
+
+	if(rh == -4.44 || rh == -4.45){
+		return 0;
+	}else{
+		printf("SHT45 Correctly Initialized\r\n");
+	}
+
+	if(!INA219_READ_CURRENT(&hi2c1, &ina)){
+		return 0;
+	}else{
+		printf("INA219 Correctly Initialized\r\n");
+	}
+
+	return 1;
 }
 
 uint8_t readSensors(TelemetryPacket *packet){
@@ -69,9 +108,6 @@ uint8_t readSensors(TelemetryPacket *packet){
 		success = 0;
 		packet->error_flags |= 0x10;
 	}
-
-	// Voltage measurement (mV)
-	packet->halow_volt = 0;
 
 	return success;
 }
