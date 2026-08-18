@@ -114,6 +114,13 @@ const osThreadAttr_t RXELINK_attributes = {
   .stack_size = 256 * 4,
   .priority = (osPriority_t) osPriorityLow7,
 };
+/* Definitions for TXELINK */
+osThreadId_t TXELINKHandle;
+const osThreadAttr_t TXELINK_attributes = {
+  .name = "TXELINK",
+  .stack_size = 512 * 4,
+  .priority = (osPriority_t) osPriorityLow7,
+};
 /* Definitions for logDataQueue */
 osMessageQueueId_t logDataQueueHandle;
 const osMessageQueueAttr_t logDataQueue_attributes = {
@@ -124,6 +131,11 @@ osMessageQueueId_t txMailBoxHandle;
 const osMessageQueueAttr_t txMailBox_attributes = {
   .name = "txMailBox"
 };
+/* Definitions for txElinkMailBox */
+osMessageQueueId_t txElinkMailBoxHandle;
+const osMessageQueueAttr_t txElinkMailBox_attributes = {
+  .name = "txElinkMailBox"
+};
 /* USER CODE BEGIN PV */
 
 uint16_t count = 0;
@@ -132,6 +144,7 @@ uint16_t count = 0;
 osEventFlagsId_t InitFlags;
 
 volatile SystemState_t current_state = STATE_INIT;
+
 
 // UART VARIABLES
 uint8_t rx_byte;
@@ -148,6 +161,10 @@ volatile uint8_t flag_update_tx_power = 0;
 volatile uint8_t new_mcs = 0;
 volatile uint8_t flag_update_mcs = 0;
 
+volatile uint8_t flag_dump_spi_data = 0;
+
+volatile uint8_t flag_ping = 0;
+
 // E-LINK RX variables
 uint8_t eth_rx_buffer[256];
 
@@ -160,6 +177,8 @@ GPSData_t actual_gps = {0};
 osMutexId_t mtxGPSHandle;
 
 volatile uint16_t rad_pulse_count = 0;
+
+
 
 /* USER CODE END PV */
 
@@ -180,6 +199,7 @@ void StartTXHalow(void *argument);
 void StartLogData(void *argument);
 void StartRXGNSS(void *argument);
 void StartRXELink(void *argument);
+void StartTXELINK(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -207,6 +227,13 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
+  /* Reset forzoso de periféricos tras posible evento de tensión */
+    __HAL_RCC_SPI1_FORCE_RESET();
+    __HAL_RCC_SPI1_RELEASE_RESET();
+    __HAL_RCC_SPI2_FORCE_RESET();
+    __HAL_RCC_SPI2_RELEASE_RESET();
+    __HAL_RCC_SPI3_FORCE_RESET();
+    __HAL_RCC_SPI3_RELEASE_RESET();
 
   /* USER CODE END Init */
 
@@ -238,6 +265,8 @@ int main(void)
 	  Error_Handler();
   }
 
+  /* WAIT COUNTER TO SEE INIT*/
+
 
   /* USER CODE END 2 */
 
@@ -258,10 +287,13 @@ int main(void)
 
   /* Create the queue(s) */
   /* creation of logDataQueue */
-  logDataQueueHandle = osMessageQueueNew (16, sizeof(uint16_t), &logDataQueue_attributes);
+  logDataQueueHandle = osMessageQueueNew (16, 53, &logDataQueue_attributes);
 
   /* creation of txMailBox */
   txMailBoxHandle = osMessageQueueNew (1, 53, &txMailBox_attributes);
+
+  /* creation of txElinkMailBox */
+  txElinkMailBoxHandle = osMessageQueueNew (1, 53, &txElinkMailBox_attributes);
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
@@ -285,6 +317,9 @@ int main(void)
 
   /* creation of RXELINK */
   RXELINKHandle = osThreadNew(StartRXELink, NULL, &RXELINK_attributes);
+
+  /* creation of TXELINK */
+  TXELINKHandle = osThreadNew(StartTXELINK, NULL, &TXELINK_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -842,7 +877,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
 
 void log_print_callback(uint32_t index, const uint8_t *packet_data, void *ctx) {
-    printf("Paquete #%lu: ", index);
+    printf("Packet #%lu: ", index);
     for (int i = 0; i < W25LOG_PACKET_SIZE; i++) {
         printf("%02X ", packet_data[i]);
     }
@@ -882,6 +917,8 @@ void StartAcquire(void *argument)
   osDelay(1000);
   Sensors_Init();
 
+  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3);
+
   // Heater PID variables
   float KP = 5.0;
   float KI = 2.0;
@@ -904,16 +941,19 @@ void StartAcquire(void *argument)
   }
 
 
-  osEventFlagsWait(InitFlags, FLAG_SENSORS_OK | FLAG_HALOW_OK | FLAG_FLASH_OK | FLAG_ETHERNET_OK, osFlagsWaitAll, osWaitForever);
+  //osEventFlagsWait(InitFlags, FLAG_SENSORS_OK | FLAG_HALOW_OK | FLAG_FLASH_OK | FLAG_ETHERNET_OK, osFlagsWaitAll, osWaitForever);
 
 
-  current_state = STATE_IDDLE;
+  //current_state = STATE_IDDLE;
+  current_state = STATE_FLIGHT;
+
 
   if(current_state == STATE_FLIGHT){
 	  HAL_GPIO_WritePin(GPIO_YELLOW_LED_GPIO_Port, GPIO_YELLOW_LED_Pin, GPIO_PIN_RESET);
 	  HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_SET);
   }
 
+  uint32_t packet_counter = 0;
   uint32_t previousWakeTime = osKernelGetTickCount();
 
   /* Infinite loop */
@@ -923,7 +963,13 @@ void StartAcquire(void *argument)
 		HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_SET);
 		HAL_GPIO_WritePin(GPIO_YELLOW_LED_GPIO_Port, GPIO_YELLOW_LED_Pin, GPIO_PIN_RESET);
 
-		TelemetryPacket packet;
+
+		TelemetryPacket packet = {0};
+		//packet.sync = 0xABCD;
+		packet.count = packet_counter;
+		packet.timestamp = HAL_GetTick();
+		packet_counter++;
+
 		readSensors(&packet);
 
 		taskENTER_CRITICAL();
@@ -940,12 +986,8 @@ void StartAcquire(void *argument)
 		    osMutexRelease(mtxGPSHandle);
 		}
 
-		// Add packet to the TX HALOW Mailbox
-		osMessageQueuePut(txMailBoxHandle, &packet, 0, 100);
-		osMessageQueuePut(logDataQueueHandle, &packet, 0, 100);
-
 		// Adjust heater
-		error = set_point - packet.int_temp;
+		error = set_point - (packet.int_temp / 100.0f);
 		p = KP * error;
 		accumulative_error = accumulative_error + error;
 		i = KI * accumulative_error;
@@ -961,6 +1003,14 @@ void StartAcquire(void *argument)
 		output_power  = (output_power < 0.0) ? 0.0 : output_power;
 
 		// Update PWM with ouputpower
+		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, (uint32_t)output_power);
+		printf("Heater Power: %.2f", output_power);
+		packet.heater_power = (uint16_t)(output_power * 100.0f);
+
+		// Add packet to the queues
+		osMessageQueuePut(txMailBoxHandle, &packet, 0, 100);
+		osMessageQueuePut(txElinkMailBoxHandle, &packet, 0, 100);
+		osMessageQueuePut(logDataQueueHandle, &packet, 0, 100);
 	}
 	else if(current_state == STATE_IDDLE){
 		HAL_GPIO_WritePin(GPIO_YELLOW_LED_GPIO_Port, GPIO_YELLOW_LED_Pin, GPIO_PIN_SET);
@@ -1075,23 +1125,31 @@ void StartLogData(void *argument)
 	  } else {
 	      printf("Flash Init Error \r\n");
 	  }
-	  W25LOG_Format(&log_state);
 
-	  W25LOG_DumpToUART(&huart2, &log_state);
+	  /** COLD TEST **/
+	  W25LOG_Format(&log_state); // UNCOMMENT TO FORMAT SPI
+	  //flag_dump_spi_data = 1; //UNCOMENT TO DUMP DATA
 
 	  /* Infinite loop */
 	  for(;;)
 	  {
 		if(current_state == STATE_FLIGHT){
-			if (osMessageQueueGet(logDataQueueHandle, &packet_to_log, NULL, osWaitForever) == osOK) {
+			if (osMessageQueueGet(logDataQueueHandle, &packet_to_log, NULL, 100) == osOK) {
 				if (flash_present && log_ready) {
 					if (W25LOG_WritePacket(&log_state, (uint8_t*)&packet_to_log) != 0) {
 						printf("Full Flash\r\n");
+					}else{
+						printf("packet logged. Temp: %.2f", packet_to_log.ext_temp / 100.0f);
 					}
 				}
 			}
 		}else{
-			osDelay(50);
+			osDelay(100);
+		}
+
+		if(flag_dump_spi_data){
+			W25LOG_DumpToUART(&huart2, &log_state);
+			flag_dump_spi_data = 0;
 		}
 
 	  }
@@ -1177,53 +1235,103 @@ void StartRXELink(void *argument)
 	  if(socket(0, Sn_MR_UDP, UDP_PORT, 0) != 0) {
 	      printf("Error while opening UDP port for RX\r\n");
 	  }
+	  osDelay(5000);
+	  W5500_Init();
 
 	  /* Infinite loop */
 	  for(;;)
 	  {
-	      uint16_t data_len = getSn_RX_RSR(0);
+		  if(current_state != STATE_FLIGHT){
+		      uint16_t data_len = getSn_RX_RSR(0);
 
-	      if(data_len > 0)
-	      {
-	          uint8_t target_ip[4];
-	          uint16_t target_port;
+		      if(data_len > 0)
+		      {
+		          uint8_t target_ip[4];
+		          uint16_t target_port;
 
-	          int32_t len = recvfrom(0, eth_rx_buffer, data_len, target_ip, &target_port);
+		          int32_t len = recvfrom(0, eth_rx_buffer, data_len, target_ip, &target_port);
 
-	          if(len == sizeof(ELinkCommand)) {
+		          if(len == sizeof(ELinkCommand)) {
 
-	              // Map from raw to struct
-	              ELinkCommand* incoming_cmd = (ELinkCommand*)eth_rx_buffer;
-	              uint8_t result = RECEIVE_ELINK_CMD(incoming_cmd);
+		              // Map from raw to struct
+		              ELinkCommand* incoming_cmd = (ELinkCommand*)eth_rx_buffer;
+		              uint8_t result = RECEIVE_ELINK_CMD(incoming_cmd);
 
-	              // Callback to the GS
-	              switch(result) {
-	                  case 0:
-	                      sendto(0, (uint8_t*)"ACK: CMD EXECTUTED\r\n", 19, target_ip, target_port);
-	                      printf("Command %d processed.\r\n", incoming_cmd->cmd_id);
-	                      break;
-	                  case 1:
-	                      sendto(0, (uint8_t*)"ERR: SYNC WORD\r\n", 16, target_ip, target_port);
-	                      printf("Sync error.\r\n");
-	                      break;
-	                  case 2:
-	                      sendto(0, (uint8_t*)"ERR: CHECKSUM\r\n", 15, target_ip, target_port);
-	                      printf("Checksum Error.\r\n");
-	                      break;
-	                  case 3:
-	                      sendto(0, (uint8_t*)"ERR: UNKNOWN ID\r\n", 17, target_ip, target_port);
-	                      printf("Command %d doesn't exist.\r\n", incoming_cmd->cmd_id);
-	                      break;
-	              }
-	          }
-	          else {
-	              printf("Wrong Size (%ld bytes, expected %d).\r\n", len, sizeof(ELinkCommand));
-	          }
-	      }
+		              // Callback to the GS
+		              switch(result) {
+		                  case 0:
+		                      sendto(0, (uint8_t*)"ACK: CMD EXECTUTED\r\n", 19, target_ip, target_port);
+		                      printf("Command %d processed.\r\n", incoming_cmd->cmd_id);
+		                      break;
+		                  case 1:
+		                      sendto(0, (uint8_t*)"ERR: SYNC WORD\r\n", 16, target_ip, target_port);
+		                      printf("Sync error.\r\n");
+		                      break;
+		                  case 2:
+		                      sendto(0, (uint8_t*)"ERR: CHECKSUM\r\n", 15, target_ip, target_port);
+		                      printf("Checksum Error.\r\n");
+		                      break;
+		                  case 3:
+		                      sendto(0, (uint8_t*)"ERR: UNKNOWN ID\r\n", 17, target_ip, target_port);
+		                      printf("Command %d doesn't exist.\r\n", incoming_cmd->cmd_id);
+		                      break;
+		              }
+		          }
+		          else {
+		              printf("Wrong Size (%ld bytes, expected %d).\r\n", len, sizeof(ELinkCommand));
+		          }
 
-	      osDelay(50);
+			      if(flag_ping){
+			    	  uint8_t gs_ip[4] = GS_IP;
+
+			    	  sendto(0, (uint8_t*)"PONG\r\n", 6, gs_ip, GS_PORT);
+
+			    	  printf("Ping responded to GS.\r\n");
+			    	  flag_ping = 0;
+			      }
+
+		      }
+		      osDelay(50);
+		  }
+
 	  }
   /* USER CODE END StartRXELink */
+}
+
+/* USER CODE BEGIN Header_StartTXELINK */
+/**
+* @brief Function implementing the TXELINK thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartTXELINK */
+void StartTXELINK(void *argument)
+{
+  /* USER CODE BEGIN StartTXELINK */
+	TelemetryPacket rx_packet;
+	uint8_t target_ip[4] = GS_IP;
+	uint16_t target_port = GS_PORT;
+/*
+	if(socket(1, Sn_MR_UDP, 5001, 0) != 1) {
+	        printf("Error opening socket for TX E-Link\r\n");
+	    }*/
+  /* Infinite loop */
+  for(;;)
+  {
+	  if(current_state != STATE_FLIGHT){
+		  if(osMessageQueueGet(txElinkMailBoxHandle, &rx_packet, NULL, osWaitForever) == osOK){
+			  if(current_state == STATE_FLIGHT){
+				  int32_t sent_bytes = sendto(1, (uint8_t*)&rx_packet, sizeof(TelemetryPacket), target_ip, target_port);
+				  if (sent_bytes < 0){
+					  printf("Error transmitting Telemetry via ELINK");
+				  }
+			  }
+		  }
+	  }
+
+
+  }
+  /* USER CODE END StartTXELINK */
 }
 
 /**

@@ -1,0 +1,5 @@
+../Core/Src/ms5803_01ba.c:11:6:MS5803_01BA_RST	32	static
+../Core/Src/ms5803_01ba.c:18:6:MS5803_01BA_READ_PROM	40	static
+../Core/Src/ms5803_01ba.c:69:6:MS5803_01BA_INIT	24	static
+../Core/Src/ms5803_01ba.c:74:10:MS5803_01BA_READ_RAW	32	static
+../Core/Src/ms5803_01ba.c:98:6:MS5803_01BA_CALIBRATE_DATA	400	static

@@ -45,6 +45,7 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.h \
  ../Core/Inc/sensors.h ../Core/Inc/max31865.h ../Core/Inc/main.h \
  ../Core/Inc/tmp102.h ../Core/Inc/ina219.h ../Core/Inc/sht4x.h \
+ ../Core/Inc/ms5803_01ba.h ../Core/Inc/npa730n015a.h \
  ../Core/Inc/telemetry.h ../Core/Inc/telemetry.h ../Core/Inc/txhalow.h \
  ../Core/Inc/w25qxx.h ../Core/Inc/w25log.h ../Core/Inc/w25qxx.h \
  ../Core/Inc/minmea.h \
@@ -105,6 +106,8 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Core/Inc/tmp102.h:
 ../Core/Inc/ina219.h:
 ../Core/Inc/sht4x.h:
+../Core/Inc/ms5803_01ba.h:
+../Core/Inc/npa730n015a.h:
 ../Core/Inc/telemetry.h:
 ../Core/Inc/telemetry.h:
 ../Core/Inc/txhalow.h:

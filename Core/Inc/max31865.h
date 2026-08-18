@@ -31,7 +31,7 @@
 #define MAX31865_CONFIG_DEFAULT_VALUE 0xC3
 
 // Resistance parameters (depends on the sensor)
-#define R_REF 430.0 // 430 ohms resistance
+#define R_REF 4301.0 // 430 ohms resistance
 #define R_NOMINAL 100.0 // PT100
 
 /**** FUNCTION DEFINITIONS ****/

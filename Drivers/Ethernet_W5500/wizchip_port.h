@@ -10,6 +10,9 @@
 
 #include "main.h"
 
+#define GS_IP {10, 86, 200, 5}
+#define GS_PORT 5000
+
 /**
  * @brief Inicializa el hardware del W5500 (Reset físico), registra los callbacks
  * de SPI con la ioLibrary de Wiznet y configura la IP estática.

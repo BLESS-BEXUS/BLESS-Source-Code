@@ -44,6 +44,8 @@ float SHT4X_Heater_Measure_Medium_One(I2C_HandleTypeDef *hi2c);
 float SHT4X_Heater_Measure_Medium_Dot_One(I2C_HandleTypeDef *hi2c);
 float SHT4X_Heater_Measure_Low_One(I2C_HandleTypeDef *hi2c);
 float SHT4X_Heater_Measure_Low_Dot_One(I2C_HandleTypeDef *hi2c);
+uint8_t SHT4X_Measure_TempHum_High(I2C_HandleTypeDef *hi2c, float *out_temp, float *out_hum);
+
 
 
 

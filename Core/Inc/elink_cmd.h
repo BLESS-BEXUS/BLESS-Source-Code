@@ -36,6 +36,10 @@ extern volatile uint8_t flag_update_tx_power;
 extern volatile uint8_t new_mcs;
 extern volatile uint8_t flag_update_mcs;
 
+extern volatile uint8_t flag_dump_spi_data;
+
+extern volatile uint8_t flag_ping;
+
 /** UTILITY FUNCTIONS **/
 
 void Config_Ethernet();

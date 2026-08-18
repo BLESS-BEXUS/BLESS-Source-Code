@@ -66,11 +66,14 @@ int8_t W5500_Init(void) {
     // Establish Static IP
     wiz_NetInfo netInfo = {
         .mac = {0x00, 0x08, 0xDC, 0xAB, 0xCD, 0xEF}, // MAC
-        .ip  = {10, 86, 110, 200},                     // Flight Segment IP
+        .ip  = {10, 86, 110, 200},                   // Flight Segment IP
         .sn  = {255, 255, 255, 0},                   // Netmask
-        .gw  = {10, 86, 110, 190},                     // Default gateway
+        .gw  = {10, 86, 110, 190},                   // Default gateway
         .dhcp = NETINFO_STATIC
     };
+
+    uint8_t version = getVERSIONR();
+    printf("W5500 Version Register: 0x%02X\r\n", version);
 
     wizchip_setnetinfo(&netInfo);
 

@@ -4,6 +4,8 @@
 "./Core/Src/main.o"
 "./Core/Src/max31865.o"
 "./Core/Src/minmea.o"
+"./Core/Src/ms5803_01ba.o"
+"./Core/Src/npa730n015a.o"
 "./Core/Src/sensors.o"
 "./Core/Src/sht4x.o"
 "./Core/Src/stm32l4xx_hal_msp.o"

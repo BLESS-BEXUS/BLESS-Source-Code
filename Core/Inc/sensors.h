@@ -12,6 +12,8 @@
 #include "tmp102.h"
 #include "ina219.h"
 #include "sht4x.h"
+#include "ms5803_01ba.h"
+#include "npa730n015a.h"
 
 #include "telemetry.h"
 

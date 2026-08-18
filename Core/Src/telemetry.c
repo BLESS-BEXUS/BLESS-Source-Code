@@ -18,71 +18,53 @@ int _write(int file, char *ptr, int len) {
     return len;
 }
 
-void printTelemetry(TelemetryPacket *packet){
+#include <stdio.h>
 
-	printf("----- TELEMETRY PACKET -----\r\n");
+void printTelemetry(const TelemetryPacket *packet) {
+    // Limpiamos un poco la salida visual
+    printf("\r\n==================================================\r\n");
+    printf("   PAQUETE DE TELEMETRÍA [#%lu] - T: %lu ms\r\n", packet->count, packet->timestamp);
+    printf("==================================================\r\n");
 
-	// Header and Timing
-	printf("Packet ID: %lu | Time: %lu s\r\n", packet->count, packet->timestamp);
+    // 1. BLOQUE TÉRMICO Y DE POTENCIA (Tu prioridad ahora mismo)
+    printf(">> PERFIL TÉRMICO (TEST -68 C) <<\r\n");
+    printf(" - Temp Interna : %6.2f C\r\n", packet->int_temp / 100.0f);
+    printf(" - Temp Externa : %6.2f C\r\n", packet->ext_temp / 100.0f);
+    printf(" - Temp Chip    : %d C\r\n", packet->temp_chip);
+    printf(" - Potencia PID : %6.2f %%\r\n", packet->heater_power / 100.0f);
+    printf(" - Corriente HW : %6u mA\r\n", packet->halow_curr); // Asumiendo mA
+    printf("--------------------------------------------------\r\n");
 
-	// Radio Performance
-	printf("--- RF METRICS ---\r\n");
-	printf("Radio RSSI: ");
-	if(packet->rf_rssi == 0){
-		printf("DISCONNECTED | ");
-	}else{
-		printf("%d dBm | ", packet->rf_rssi);
-	}
-	printf("TX SNR: %u | TX Noise Floor: %d\r\n", packet->rf_snr, packet->rf_noise_floor);
-	printf("RF Freq Dev: %d | RF MCS: %u\r\n", packet->rf_freq_dev, packet->rf_tx_mcs);
-	printf("RF Chip Temp: %d\r\n", packet->temp_chip);
+    // 2. ENTORNO
+    printf(">> ENTORNO <<\r\n");
+    // Se asume que la humedad y la presión también necesitan un factor de escala,
+    // ajusta el "/ 100.0f" si las envías en formato bruto.
+    printf(" - Presion      : %lu Pa\r\n", packet->env_press);
+    printf(" - Humedad      : %.2f %%\r\n", packet->ext_hum / 100.0f);
+    printf(" - Radiacion    : %u cps\r\n", packet->rad_cps);
+    printf("--------------------------------------------------\r\n");
 
-	// GNSS Data
-	printf("--- GNSS METRICS ---\r\n");
+    // 3. RF PERFORMANCE
+    printf(">> RADIO (HaLow) <<\r\n");
+    printf(" - RSSI / SNR   : %d dBm  /  %d dB\r\n", packet->rf_rssi, packet->rf_snr);
+    printf(" - Freq Dev     : %d Hz\r\n", packet->rf_freq_dev);
+    printf(" - Exito (Tx)   : %u %%\r\n", packet->rf_success_rate);
+    printf(" - Noise Floor  : %d dBm\r\n", packet->rf_noise_floor);
+    printf(" - MCS / Volt   : %u  /  %u mV\r\n", packet->rf_tx_mcs, packet->rf_volt);
+    printf("--------------------------------------------------\r\n");
 
-	int8_t raw_fix_sats = packet->gps_fix_sats;
-	uint8_t num_satellites = raw_fix_sats & 0x3F;
-	uint8_t fix_quality = (raw_fix_sats >> 6) & 0x03;
+    // 4. GNSS
+    printf(">> GNSS <<\r\n");
+    // Los GPS suelen enviar los grados multiplicados por 10^7
+    printf(" - Lat / Lon    : %.6f / %.6f\r\n", packet->gps_lat / 10000000.0f, packet->gps_lon / 10000000.0f);
+    printf(" - Altitud      : %u m\r\n", packet->gps_alt);
+    printf(" - Satelites    : %d\r\n", packet->gps_fix_sats);
+    printf("--------------------------------------------------\r\n");
 
-	printf("GPS Fix: ");
-	switch(fix_quality) {
-		case 0:  printf("NO FIX"); break;
-		case 1:  printf("3D FIX"); break;
-		case 2:  printf("DGPS FIX"); break;
-		case 3:  printf("RTK FIX"); break;
-		default: printf("UNKNOWN"); break;
-	}
-	printf(" | Satellites: %u\r\n", num_satellites);
-	printf("Latitude: %.7f | Longitude: %.7f\r\n", packet->gps_lat / 10000000.0, packet->gps_lon / 10000000.0);
-	printf("Altitude: %u m\r\n", packet->gps_alt);
-
-	// Power Data
-	printf("--- POWER ---\r\n");
-	printf("Current: %u mA\r\n", packet->halow_curr);
-
-	// Sensor Data
-	printf("--- SENSORS ---\r\n");
-	printf("Temperature - EXT: %.2f C | INT: %.2f C\r\n", packet->ext_temp / 100.0, packet->int_temp / 100.0);
-	printf("Humidity: %.2f%% \r\n", packet->ext_hum / 100.0);
-	printf("Radiation: %d cps\r\n", packet->rad_cps);
-
-	// System State and Security
-	printf("--- SYSTEM STATUS ---\r\n");
-	printf("Checksum: 0x%04X\r\n", packet->checksum);
-
-	if(packet->error_flags != 0){
-		printf("ERROR FLAGS : 0x%02X\r\n", packet->error_flags);
-
-		if(packet->error_flags & 0x01){
-			printf(" [Error: TMP102]\r\n");
-		}
-		if(packet->error_flags & 0x02){
-			printf(" [Error: PT100]\r\n");
-		}
-		if(packet->error_flags & 0x04){
-			printf(" [Error: SD Card]\r\n");
-		}
-	}
-
-	printf("----------------------------\r\n\n");
+    // 5. ESTADO DEL SISTEMA
+    printf(">> SISTEMA <<\r\n");
+    printf(" - Sync         : 0x%04X\r\n", packet->sync);
+    printf(" - Error Flags  : 0x%02X\r\n", packet->error_flags);
+    printf(" - Checksum     : 0x%04X\r\n", packet->checksum);
+    printf("==================================================\r\n\r\n");
 }

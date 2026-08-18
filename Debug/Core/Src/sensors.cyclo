@@ -1,3 +1,3 @@
-../Core/Src/sensors.c:22:6:Sensors_Init	2
-../Core/Src/sensors.c:30:9:SensorsSelfCheck	7
-../Core/Src/sensors.c:69:9:readSensors	7
+../Core/Src/sensors.c:25:6:Sensors_Init	2
+../Core/Src/sensors.c:34:9:SensorsSelfCheck	7
+../Core/Src/sensors.c:73:9:readSensors	6

@@ -105,7 +105,7 @@ void CMD_SYS_STOP(){
 }
 
 void CMD_PING(){
-	//TODO: Make ping
+	flag_ping = 1;
 }
 
 /*** SURVIVAL COMMANDS ***/
@@ -136,7 +136,7 @@ void CMD_RF_SILENCE(){
 
 /*** DATA MANAGEMENT COMMANDS ***/
 void CMD_SAVE_DATA(){
-
+	flag_dump_spi_data = 1;
 }
 void CMD_SEND_HALOW(){
 
