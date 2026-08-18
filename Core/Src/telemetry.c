@@ -21,6 +21,26 @@ int _write(int file, char *ptr, int len) {
 #include <stdio.h>
 
 void printTelemetry(const TelemetryPacket *packet) {
+    uint8_t gps_packed = (uint8_t)packet->gps_fix_sats;
+    uint8_t gps_fix = gps_packed >> 6;
+    uint8_t gps_sats = gps_packed & 0x3FU;
+    const char *gps_fix_text;
+
+    switch (gps_fix) {
+    case 0:
+        gps_fix_text = "SIN FIX";
+        break;
+    case 1:
+        gps_fix_text = "FIX GNSS";
+        break;
+    case 2:
+        gps_fix_text = "FIX DIFERENCIAL";
+        break;
+    default:
+        gps_fix_text = "FIX AVANZADO";
+        break;
+    }
+
     // Limpiamos un poco la salida visual
     printf("\r\n==================================================\r\n");
     printf("   PAQUETE DE TELEMETRÍA [#%lu] - T: %lu ms\r\n", packet->count, packet->timestamp);
@@ -58,7 +78,16 @@ void printTelemetry(const TelemetryPacket *packet) {
     // Los GPS suelen enviar los grados multiplicados por 10^7
     printf(" - Lat / Lon    : %.6f / %.6f\r\n", packet->gps_lat / 10000000.0f, packet->gps_lon / 10000000.0f);
     printf(" - Altitud      : %u m\r\n", packet->gps_alt);
-    printf(" - Satelites    : %d\r\n", packet->gps_fix_sats);
+    printf(" - Calidad Fix  : %u (%s)\r\n", gps_fix, gps_fix_text);
+    printf(" - Satelites    : %u\r\n", gps_sats);
+    printf(" - Fix/Sats RAW : 0x%02X\r\n", gps_packed);
+    if (gps_fix == 0U) {
+        printf(" - Estado GNSS  : Buscando solucion; posicion no valida\r\n");
+    } else if ((packet->gps_lat == 0) && (packet->gps_lon == 0)) {
+        printf(" - Estado GNSS  : AVISO: fix valido pero coordenadas a cero\r\n");
+    } else {
+        printf(" - Estado GNSS  : Posicion valida\r\n");
+    }
     printf("--------------------------------------------------\r\n");
 
     // 5. ESTADO DEL SISTEMA

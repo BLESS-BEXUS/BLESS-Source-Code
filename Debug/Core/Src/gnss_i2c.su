@@ -1,0 +1,2 @@
+../Core/Src/gnss_i2c.c:11:19:GNSS_I2C_IsReady	16	static
+../Core/Src/gnss_i2c.c:16:19:GNSS_I2C_Read	48	static

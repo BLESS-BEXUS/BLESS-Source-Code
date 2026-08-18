@@ -1,2 +1,2 @@
 ../Core/Src/telemetry.c:16:5:_write	1
-../Core/Src/telemetry.c:23:6:printTelemetry	1
+../Core/Src/telemetry.c:23:6:printTelemetry	8

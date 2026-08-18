@@ -1,5 +1,6 @@
 "./Core/Src/elink_cmd.o"
 "./Core/Src/freertos.o"
+"./Core/Src/gnss_i2c.o"
 "./Core/Src/ina219.o"
 "./Core/Src/main.o"
 "./Core/Src/max31865.o"

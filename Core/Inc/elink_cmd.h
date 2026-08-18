@@ -12,7 +12,22 @@
 
 #include "main.h"
 
-#define MAX_PAYLOAD_SIZE 2
+#define MAX_PAYLOAD_SIZE 2U
+
+#define ELINK_SYNC1 0xE175U
+#define ELINK_SYNC2 0xC245U
+
+#define ELINK_CMD_PING 0x04U
+#define ELINK_RSP_PONG 0x84U
+#define ELINK_PING_PAYLOAD_SIZE 2U
+
+typedef enum {
+	ELINK_CMD_OK = 0,
+	ELINK_CMD_ERR_SYNC,
+	ELINK_CMD_ERR_CHECKSUM,
+	ELINK_CMD_ERR_UNKNOWN_ID,
+	ELINK_CMD_ERR_PAYLOAD
+} ELinkCommandResult;
 
 typedef struct{
 	// HEADER
@@ -38,13 +53,12 @@ extern volatile uint8_t flag_update_mcs;
 
 extern volatile uint8_t flag_dump_spi_data;
 
-extern volatile uint8_t flag_ping;
-
 /** UTILITY FUNCTIONS **/
 
 void Config_Ethernet();
-uint16_t Calculate_Checksum(ELinkCommand *command);
-uint8_t RECEIVE_ELINK_CMD(ELinkCommand *command);
+uint16_t Calculate_Checksum(const ELinkCommand *command);
+ELinkCommandResult RECEIVE_ELINK_CMD(const ELinkCommand *command);
+void Build_Ping_Response(const ELinkCommand *request, ELinkCommand *response);
 
 /**** COMMAND FUNCTIONS ****/
 
@@ -52,7 +66,6 @@ uint8_t RECEIVE_ELINK_CMD(ELinkCommand *command);
 void CMD_SYS_RESET();
 void CMD_SYS_START();
 void CMD_SYS_STOP();
-void CMD_PING();
 
 // SURVIVAL COMMANDS
 uint8_t CMD_HEAT_MANUAL(uint8_t value);

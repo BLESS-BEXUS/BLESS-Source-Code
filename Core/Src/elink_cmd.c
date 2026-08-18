@@ -12,9 +12,9 @@
 
 
 /** UTILITY FUNCTIONS **/
-uint16_t Calculate_Checksum(ELinkCommand *command){
+uint16_t Calculate_Checksum(const ELinkCommand *command){
 	uint16_t sum = 0;
-	uint8_t *ptr = (uint8_t *)command;
+	const uint8_t *ptr = (const uint8_t *)command;
 	uint16_t length_to_check = sizeof(ELinkCommand) - sizeof(uint16_t);
 
 	for(uint16_t i = 0; i < length_to_check; i++){
@@ -23,14 +23,17 @@ uint16_t Calculate_Checksum(ELinkCommand *command){
 	return sum;
 }
 
-uint8_t RECEIVE_ELINK_CMD(ELinkCommand *command){
+ELinkCommandResult RECEIVE_ELINK_CMD(const ELinkCommand *command){
 	// Check Sync
-	if(command->sync1 != 0xE175 || command->sync2 != 0xC245){
-		return 1;
+	if(command->sync1 != ELINK_SYNC1 || command->sync2 != ELINK_SYNC2){
+		return ELINK_CMD_ERR_SYNC;
 	}
 	// Checksum
 	if(Calculate_Checksum(command) != command->checksum){
-		return 2;
+		return ELINK_CMD_ERR_CHECKSUM;
+	}
+	if(command->payload_size > MAX_PAYLOAD_SIZE){
+		return ELINK_CMD_ERR_PAYLOAD;
 	}
 
 	switch(command->cmd_id){
@@ -44,8 +47,10 @@ uint8_t RECEIVE_ELINK_CMD(ELinkCommand *command){
 		case 0x03:
 			CMD_SYS_STOP();
 			break;
-		case 0x04:
-			CMD_PING();
+		case ELINK_CMD_PING:
+			if(command->payload_size != ELINK_PING_PAYLOAD_SIZE){
+				return ELINK_CMD_ERR_PAYLOAD;
+			}
 			break;
 
 		// Survival Commands
@@ -82,9 +87,19 @@ uint8_t RECEIVE_ELINK_CMD(ELinkCommand *command){
 			break;
 
 		default:
-			return 3;
+			return ELINK_CMD_ERR_UNKNOWN_ID;
 	}
-	return 0;
+	return ELINK_CMD_OK;
+}
+
+void Build_Ping_Response(const ELinkCommand *request, ELinkCommand *response){
+	response->sync1 = ELINK_SYNC1;
+	response->sync2 = ELINK_SYNC2;
+	response->cmd_id = ELINK_RSP_PONG;
+	response->payload_size = ELINK_PING_PAYLOAD_SIZE;
+	response->payload[0] = request->payload[0];
+	response->payload[1] = request->payload[1];
+	response->checksum = Calculate_Checksum(response);
 }
 
 
@@ -102,10 +117,6 @@ void CMD_SYS_START(){
 
 void CMD_SYS_STOP(){
 	current_state = STATE_IDDLE;
-}
-
-void CMD_PING(){
-	flag_ping = 1;
 }
 
 /*** SURVIVAL COMMANDS ***/

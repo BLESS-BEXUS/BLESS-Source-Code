@@ -1,3 +1,5 @@
-../Core/Src/sensors.c:25:6:Sensors_Init	8	static
-../Core/Src/sensors.c:34:9:SensorsSelfCheck	24	static
-../Core/Src/sensors.c:73:9:readSensors	48	static
+../Core/Src/sensors.c:25:13:Sensors_I2C_Lock	8	static
+../Core/Src/sensors.c:31:13:Sensors_I2C_Unlock	8	static
+../Core/Src/sensors.c:36:6:Sensors_Init	8	static
+../Core/Src/sensors.c:47:9:SensorsSelfCheck	24	static
+../Core/Src/sensors.c:93:9:readSensors	48	static

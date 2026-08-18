@@ -14,6 +14,7 @@
 extern I2C_HandleTypeDef hi2c1;
 extern SPI_HandleTypeDef hspi3;
 extern UART_HandleTypeDef huart2;
+extern osMutexId_t mtxI2C1Handle;
 
 
 INA219_t ina;
@@ -21,22 +22,38 @@ MS5803_01BA_T ms5803;
 ms5803_01ba_prom_t ms5803_prom;
 NPA730M_015A_T npa730;
 
+static void Sensors_I2C_Lock(void){
+	if(osMutexAcquire(mtxI2C1Handle, osWaitForever) != osOK){
+		Error_Handler();
+	}
+}
+
+static void Sensors_I2C_Unlock(void){
+	osMutexRelease(mtxI2C1Handle);
+}
+
 
 void Sensors_Init(){
 	MAX31865_Init(&hspi3, CS_ETEMP_GPIO_Port, CS_ETEMP_Pin);
+	Sensors_I2C_Lock();
 	if(INA219_INIT(&hi2c1, &ina, INA219_I2C_ADDRESS_GND_GND ,INA219_R100, 3.2) != 0){
 		printf("ERROR INITIALIZATING INA");
 	}
 
 	 MS5803_01BA_INIT(&hi2c1, MS5803_01BA_I2C_LOW_ADDR, &ms5803_prom);
+	 Sensors_I2C_Unlock();
 }
 
 uint8_t SensorsSelfCheck(){
+	Sensors_I2C_Lock();
 	float internalTemp = TMP102_Read_Temp(&hi2c1, TMP102_I2C_ADDRESS_GND);
+	Sensors_I2C_Unlock();
 	osDelay(500);
 	float externalTemp = MAX31865_Read_Temp(&hspi3, CS_ETEMP_GPIO_Port, CS_ETEMP_Pin);
 	osDelay(500);
+	Sensors_I2C_Lock();
 	float rh = SHT4X_Measure_High(&hi2c1);
+	Sensors_I2C_Unlock();
 	osDelay(500);
 
 	printf("=====================================\r\n");
@@ -61,7 +78,10 @@ uint8_t SensorsSelfCheck(){
 		printf("SHT45 Correctly Initialized\r\n");
 	}
 
-	if(!INA219_READ_CURRENT(&hi2c1, &ina)){
+	Sensors_I2C_Lock();
+	uint8_t ina_ok = INA219_READ_CURRENT(&hi2c1, &ina);
+	Sensors_I2C_Unlock();
+	if(!ina_ok){
 		return 0;
 	}else{
 		printf("INA219 Correctly Initialized\r\n");
@@ -76,7 +96,9 @@ uint8_t readSensors(TelemetryPacket *packet){
 	packet->error_flags = 0;
 
 	// Internal Temperature
+	Sensors_I2C_Lock();
 	float internalTemp = TMP102_Read_Temp(&hi2c1, TMP102_I2C_ADDRESS_GND);
+	Sensors_I2C_Unlock();
 	if(internalTemp > -100 && internalTemp < 150){
 		packet->int_temp =(int16_t) (internalTemp * 100);
 	}else{
@@ -96,13 +118,14 @@ uint8_t readSensors(TelemetryPacket *packet){
 
 	// Humidity
 
-	float rh = SHT4X_Measure_High(&hi2c1);
-
 	float sht_temp = 0.0f;
 	float sht_hum = 0.0f;
 
 	// Llamamos a la nueva función pasando la dirección de memoria (&) de las variables
-	if (SHT4X_Measure_TempHum_High(&hi2c1, &sht_temp, &sht_hum) == 0) {
+	Sensors_I2C_Lock();
+	uint8_t sht_status = SHT4X_Measure_TempHum_High(&hi2c1, &sht_temp, &sht_hum);
+	Sensors_I2C_Unlock();
+	if (sht_status == 0) {
 	    // Si la lectura ha ido bien, guardamos los datos en el paquete de telemetría.
 	    // Como tu int_temp y ext_hum necesitan enteros, multiplicamos por 100.
 
@@ -117,7 +140,10 @@ uint8_t readSensors(TelemetryPacket *packet){
 	}
 
 	// Current Consumption (mA)
-	if(INA219_READ_CURRENT(&hi2c1, &ina)){
+	Sensors_I2C_Lock();
+	uint8_t ina_ok = INA219_READ_CURRENT(&hi2c1, &ina);
+	Sensors_I2C_Unlock();
+	if(ina_ok){
 		packet->halow_curr = ina.current;
 	}else{
 		success = 0;
@@ -126,11 +152,15 @@ uint8_t readSensors(TelemetryPacket *packet){
 
 	// Pressure
 	int32_t raw_temp, raw_press;
+	Sensors_I2C_Lock();
 	raw_press = MS5803_01BA_READ_RAW(&hi2c1, MS5803_01BA_I2C_LOW_ADDR, MS5803_01BA_CONVERT_PRESSURE_OSR4096);
 	raw_temp = MS5803_01BA_READ_RAW(&hi2c1, MS5803_01BA_I2C_LOW_ADDR, MS5803_01BA_CONVERT_TEMP_OSR4096);
+	Sensors_I2C_Unlock();
 
 	MS5803_01BA_CALIBRATE_DATA(raw_press, raw_temp, &ms5803_prom, &ms5803);
+	Sensors_I2C_Lock();
 	NPA730_I2C_FETCH_DATA_2BYTES(&hi2c1, NPA730_I2C_ADDRESS, &npa730);
+	Sensors_I2C_Unlock();
 	packet->env_press = npa730.pressure;
 
 

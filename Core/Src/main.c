@@ -28,6 +28,7 @@
 #include "w25qxx.h"
 #include "w25log.h"
 #include "minmea.h"
+#include "gnss_i2c.h"
 #include "wizchip_port.h"
 #include "socket.h"
 #include "elink_cmd.h"
@@ -51,6 +52,8 @@
 
 // GNSS VARIABLES
 #define GPS_BUFFER_SIZE 100
+#define GPS_I2C_READ_BUFFER_SIZE 128
+#define GPS_I2C_POLL_PERIOD_MS 20
 
 /* USER CODE END PD */
 
@@ -163,18 +166,16 @@ volatile uint8_t flag_update_mcs = 0;
 
 volatile uint8_t flag_dump_spi_data = 0;
 
-volatile uint8_t flag_ping = 0;
-
 // E-LINK RX variables
 uint8_t eth_rx_buffer[256];
 
 // GNSS VARIABLES
 char gps_buffer[GPS_BUFFER_SIZE];
 uint8_t gps_idx = 0;
-uint8_t gps_rx_byte;
 
 GPSData_t actual_gps = {0};
 osMutexId_t mtxGPSHandle;
+osMutexId_t mtxI2C1Handle;
 
 volatile uint16_t rad_pulse_count = 0;
 
@@ -202,6 +203,9 @@ void StartRXELink(void *argument);
 void StartTXELINK(void *argument);
 
 /* USER CODE BEGIN PFP */
+
+static void GNSS_ProcessSentence(const char *sentence);
+static void GNSS_FeedByte(uint8_t byte);
 
 /* USER CODE END PFP */
 
@@ -255,8 +259,6 @@ int main(void)
   MX_LPUART1_UART_Init();
   MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
-  HAL_UART_Receive_IT(&hlpuart1, &gps_rx_byte, 1);
-
   HAL_UART_Receive_IT(&huart3, &rx_byte, 1);
   InitFlags = osEventFlagsNew(NULL);
   if(InitFlags == NULL){
@@ -275,6 +277,10 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_MUTEX */
   mtxGPSHandle = osMutexNew(NULL);
+  mtxI2C1Handle = osMutexNew(NULL);
+  if ((mtxGPSHandle == NULL) || (mtxI2C1Handle == NULL)) {
+      Error_Handler();
+  }
   /* USER CODE END RTOS_MUTEX */
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
@@ -854,25 +860,82 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
         HAL_UART_Receive_IT(huart, &rx_byte, 1);
     }
 
-    //============== LPUART1 ==============
+}
 
-    else if (huart->Instance == LPUART1)
+static void GNSS_ProcessSentence(const char *sentence)
+{
+    switch (minmea_sentence_id(sentence, false))
     {
-        if (gps_idx < 99) {
-            gps_buffer[gps_idx++] = (char)gps_rx_byte;
-        }
+      case MINMEA_SENTENCE_GGA:
+      {
+        struct minmea_sentence_gga gga;
+        if (minmea_parse_gga(&gga, sentence))
+        {
+            float lat_decimal = minmea_tocoord(&gga.latitude);
+            float lon_decimal = minmea_tocoord(&gga.longitude);
 
-        if (gps_rx_byte == '\n') {
-            gps_buffer[gps_idx] = '\0';
-            gps_idx = 0;
+            int32_t lat_fixed = (int32_t)(lat_decimal * 10000000.0f);
+            int32_t lon_fixed = (int32_t)(lon_decimal * 10000000.0f);
+            uint16_t alt = (uint16_t)minmea_tofloat(&gga.altitude);
 
-            if (RXGNSSHandle != NULL) {
-                vTaskNotifyGiveFromISR((TaskHandle_t)RXGNSSHandle, NULL);
+            uint8_t fix = (gga.fix_quality > 3) ? 3 : gga.fix_quality;
+            uint8_t sats = (gga.satellites_tracked > 63) ? 63 : gga.satellites_tracked;
+            int8_t fix_sats_packed = (int8_t)((fix << 6) | sats);
+
+            if (osMutexAcquire(mtxGPSHandle, osWaitForever) == osOK)
+            {
+                actual_gps.lat = lat_fixed;
+                actual_gps.lon = lon_fixed;
+                actual_gps.alt = alt;
+                actual_gps.fix_sats = fix_sats_packed;
+                osMutexRelease(mtxGPSHandle);
             }
         }
-        HAL_UART_Receive_IT(huart, &gps_rx_byte, 1);
+        break;
+      }
+
+      case MINMEA_SENTENCE_RMC:
+      {
+        struct minmea_sentence_rmc rmc;
+        if (minmea_parse_rmc(&rmc, sentence)) {
+            /* Reserved for speed, course and UTC date/time. */
+        }
+        break;
+      }
+
+      default:
+        break;
+    }
+}
+
+static void GNSS_FeedByte(uint8_t byte)
+{
+    if (byte == '$') {
+        gps_idx = 0;
     }
 
+    /* Ignore padding and partial data until the beginning of a NMEA sentence. */
+    if ((gps_idx == 0U) && (byte != '$')) {
+        return;
+    }
+
+    if (byte == '\r') {
+        return;
+    }
+
+    if (byte == '\n') {
+        gps_buffer[gps_idx] = '\0';
+        GNSS_ProcessSentence(gps_buffer);
+        gps_idx = 0;
+        return;
+    }
+
+    if (gps_idx < (GPS_BUFFER_SIZE - 1U)) {
+        gps_buffer[gps_idx++] = (char)byte;
+    } else {
+        /* Drop an oversized/corrupt sentence and resynchronize at the next '$'. */
+        gps_idx = 0;
+    }
 }
 
 
@@ -1166,55 +1229,43 @@ void StartLogData(void *argument)
 void StartRXGNSS(void *argument)
 {
   /* USER CODE BEGIN StartRXGNSS */
+  uint8_t i2c_data[GPS_I2C_READ_BUFFER_SIZE];
+  uint16_t bytes_read;
+  HAL_StatusTypeDef status;
+
+  /* Wait until the MAX-M10S acknowledges its default I2C address. */
+  do {
+      status = HAL_ERROR;
+      if (osMutexAcquire(mtxI2C1Handle, osWaitForever) == osOK) {
+          status = GNSS_I2C_IsReady(&hi2c1);
+          osMutexRelease(mtxI2C1Handle);
+      }
+      if (status != HAL_OK) {
+          osDelay(250);
+      }
+  } while (status != HAL_OK);
+
   /* Infinite loop */
-	for(;;)
-	  {
-	    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+  for (;;)
+  {
+      bytes_read = 0U;
+      status = HAL_ERROR;
 
-	    switch (minmea_sentence_id(gps_buffer, false))
-	    {
-	      case MINMEA_SENTENCE_GGA:
-	      {
-	        struct minmea_sentence_gga gga;
-	        if (minmea_parse_gga(&gga, gps_buffer))
-	        {
-	        	float lat_decimal = minmea_tocoord(&gga.latitude);
-	        	float lon_decimal = minmea_tocoord(&gga.longitude);
+      if (osMutexAcquire(mtxI2C1Handle, osWaitForever) == osOK) {
+          status = GNSS_I2C_Read(&hi2c1,i2c_data, sizeof(i2c_data), &bytes_read);
+          osMutexRelease(mtxI2C1Handle);
+      }
 
-	        	int32_t lat_fixed = (int32_t)(lat_decimal * 10000000.0f);
-	        	int32_t lon_fixed = (int32_t)(lon_decimal * 10000000.0f);
-	        	uint16_t alt = (uint16_t)minmea_tofloat(&gga.altitude);
-
-	        	uint8_t fix = (gga.fix_quality > 3) ? 3 : gga.fix_quality;
-	        	uint8_t sats = (gga.satellites_tracked > 63) ? 63 : gga.satellites_tracked;
-	        	int8_t fix_sats_packed = (int8_t)((fix << 6) | sats);
-
-	        	if (osMutexAcquire(mtxGPSHandle, osWaitForever) == osOK)
-	        	{
-	        	    actual_gps.lat = lat_fixed;
-	        	    actual_gps.lon = lon_fixed;
-	        	    actual_gps.alt = alt;
-	        	    actual_gps.fix_sats = fix_sats_packed;
-	        	    osMutexRelease(mtxGPSHandle);
-	        	}
-
-	        }
-	        break;
-	      }
-
-	      case MINMEA_SENTENCE_RMC:
-	      {
-	        struct minmea_sentence_rmc rmc;
-	        if (minmea_parse_rmc(&rmc, gps_buffer)) {
-
-	        }
-	        break;
-	      }
-
-	      default:
-	        break;
-	    }
-	  }
+      if (status == HAL_OK) {
+          for (uint16_t i = 0U; i < bytes_read; i++) {
+              GNSS_FeedByte(i2c_data[i]);
+          }
+          osDelay(GPS_I2C_POLL_PERIOD_MS);
+      } else {
+          /* Avoid flooding a faulty or disconnected bus. */
+          osDelay(100);
+      }
+  }
   /* USER CODE END StartRXGNSS */
 }
 
@@ -1252,44 +1303,50 @@ void StartRXELink(void *argument)
 		          int32_t len = recvfrom(0, eth_rx_buffer, data_len, target_ip, &target_port);
 
 		          if(len == sizeof(ELinkCommand)) {
-
-		              // Map from raw to struct
-		              ELinkCommand* incoming_cmd = (ELinkCommand*)eth_rx_buffer;
-		              uint8_t result = RECEIVE_ELINK_CMD(incoming_cmd);
+		              ELinkCommand incoming_cmd;
+		              memcpy(&incoming_cmd, eth_rx_buffer, sizeof(incoming_cmd));
+		              ELinkCommandResult result = RECEIVE_ELINK_CMD(&incoming_cmd);
 
 		              // Callback to the GS
 		              switch(result) {
-		                  case 0:
-		                      sendto(0, (uint8_t*)"ACK: CMD EXECTUTED\r\n", 19, target_ip, target_port);
-		                      printf("Command %d processed.\r\n", incoming_cmd->cmd_id);
+		                  case ELINK_CMD_OK:
+		                      if(incoming_cmd.cmd_id == ELINK_CMD_PING) {
+		                          ELinkCommand ping_response;
+		                          Build_Ping_Response(&incoming_cmd, &ping_response);
+		                          sendto(0, (uint8_t*)&ping_response, sizeof(ping_response), target_ip, target_port);
+		                          uint16_t ping_token = (uint16_t)incoming_cmd.payload[0]
+		                                                | ((uint16_t)incoming_cmd.payload[1] << 8);
+		                          printf("Ping 0x%04X responded to %u.%u.%u.%u:%u.\r\n",
+		                                 ping_token,
+		                                 target_ip[0], target_ip[1], target_ip[2], target_ip[3],
+		                                 target_port);
+		                      } else {
+		                          sendto(0, (uint8_t*)"ACK: CMD EXECTUTED\r\n", 19, target_ip, target_port);
+		                          printf("Command %d processed.\r\n", incoming_cmd.cmd_id);
+		                      }
 		                      break;
-		                  case 1:
+		                  case ELINK_CMD_ERR_SYNC:
 		                      sendto(0, (uint8_t*)"ERR: SYNC WORD\r\n", 16, target_ip, target_port);
 		                      printf("Sync error.\r\n");
 		                      break;
-		                  case 2:
+		                  case ELINK_CMD_ERR_CHECKSUM:
 		                      sendto(0, (uint8_t*)"ERR: CHECKSUM\r\n", 15, target_ip, target_port);
 		                      printf("Checksum Error.\r\n");
 		                      break;
-		                  case 3:
+		                  case ELINK_CMD_ERR_UNKNOWN_ID:
 		                      sendto(0, (uint8_t*)"ERR: UNKNOWN ID\r\n", 17, target_ip, target_port);
-		                      printf("Command %d doesn't exist.\r\n", incoming_cmd->cmd_id);
+		                      printf("Command %d doesn't exist.\r\n", incoming_cmd.cmd_id);
+		                      break;
+		                  case ELINK_CMD_ERR_PAYLOAD:
+		                      sendto(0, (uint8_t*)"ERR: PAYLOAD\r\n", 14, target_ip, target_port);
+		                      printf("Invalid payload size %u for command %u.\r\n",
+		                             incoming_cmd.payload_size, incoming_cmd.cmd_id);
 		                      break;
 		              }
 		          }
 		          else {
 		              printf("Wrong Size (%ld bytes, expected %d).\r\n", len, sizeof(ELinkCommand));
 		          }
-
-			      if(flag_ping){
-			    	  uint8_t gs_ip[4] = GS_IP;
-
-			    	  sendto(0, (uint8_t*)"PONG\r\n", 6, gs_ip, GS_PORT);
-
-			    	  printf("Ping responded to GS.\r\n");
-			    	  flag_ping = 0;
-			      }
-
 		      }
 		      osDelay(50);
 		  }
