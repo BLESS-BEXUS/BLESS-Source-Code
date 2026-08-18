@@ -1,6 +1,7 @@
-../Core/Src/txhalow.c:20:6:uart_flush	2
-../Core/Src/txhalow.c:25:9:wait_for_ok	4
-../Core/Src/txhalow.c:48:9:Tx_HaLow_Packet	3
-../Core/Src/txhalow.c:103:6:HaLow_Send_Config_Command	3
-../Core/Src/txhalow.c:127:9:Config_HaLow	1
-../Core/Src/txhalow.c:146:6:HaLow_Extract_Data	6
+../Core/Src/txhalow.c:21:17:Telemetry_CRC16_Modbus	4
+../Core/Src/txhalow.c:36:6:uart_flush	2
+../Core/Src/txhalow.c:41:9:wait_for_ok	4
+../Core/Src/txhalow.c:64:9:Tx_HaLow_Packet	3
+../Core/Src/txhalow.c:98:6:HaLow_Send_Config_Command	3
+../Core/Src/txhalow.c:122:9:Config_HaLow	1
+../Core/Src/txhalow.c:141:6:HaLow_Extract_Data	6

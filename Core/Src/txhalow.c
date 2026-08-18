@@ -15,6 +15,22 @@ extern uint8_t rx_byte;
 extern TelemetryPacket rf_data_cache;
 extern uint8_t rx_buffer[512];
 
+_Static_assert(sizeof(EthernetHeader) == 14U, "Unexpected Ethernet header size");
+_Static_assert(sizeof(TelemetryPacket) == 53U, "Unexpected telemetry packet size");
+
+static uint16_t Telemetry_CRC16_Modbus(const uint8_t *data, uint16_t length){
+	uint16_t crc = 0xFFFFU;
+
+	for(uint16_t i = 0; i < length; i++){
+		crc ^= data[i];
+		for(uint8_t bit = 0; bit < 8U; bit++){
+			crc = (crc & 1U) ? (crc >> 1) ^ 0xA001U : crc >> 1;
+		}
+	}
+
+	return crc;
+}
+
 
 
 void uart_flush(UART_HandleTypeDef *huart) {
@@ -48,8 +64,8 @@ uint8_t wait_for_ok(uint32_t timeout_ms) {
 uint8_t Tx_HaLow_Packet(UART_HandleTypeDef *huart, TelemetryPacket rx_packet){
 
 	// Telemetry packets
-	TelemetryPacket tx_packet;
-	uint8_t tx_frame[67];
+	TelemetryPacket tx_packet = rx_packet;
+	uint8_t tx_frame[sizeof(EthernetHeader) + sizeof(TelemetryPacket)];
 
 	// Ethernet header config
 	EthernetHeader eth_hdr = {0};
@@ -57,42 +73,21 @@ uint8_t Tx_HaLow_Packet(UART_HandleTypeDef *huart, TelemetryPacket rx_packet){
 	memcpy(eth_hdr.dest_mac, mac_dest, 6);
 	eth_hdr.eth_type = 0x0000;
 
-    memset(&tx_packet, 0, sizeof(TelemetryPacket)); // Clean the packet
-    uart_flush(huart);
-
-	// Add real and dummy data (provisional, when we have all the sensors, rx_packet will be directly sended)
-	tx_packet.sync = rx_packet.sync;
-	tx_packet.timestamp = HAL_GetTick();
-	tx_packet.count = 1;
-	tx_packet.gps_lat = rx_packet.gps_lat;
-	tx_packet.gps_lon = rx_packet.gps_lon;
-	tx_packet.gps_alt = rx_packet.gps_alt;
-	tx_packet.gps_fix_sats = rx_packet.gps_fix_sats;
-	tx_packet.rf_rssi = rx_packet.rf_rssi;
-	tx_packet.rf_snr = rx_packet.rf_snr;
-	tx_packet.rf_freq_dev = rx_packet.rf_freq_dev;
-	tx_packet.rf_success_rate = rx_packet.rf_success_rate;
-	tx_packet.rf_noise_floor = rx_packet.rf_noise_floor;
-	tx_packet.rf_tx_mcs = rx_packet.rf_tx_mcs;
-	tx_packet.halow_curr = rx_packet.halow_curr;
-	tx_packet.temp_chip = rx_packet.temp_chip;
-	tx_packet.env_press = 101325;
-	tx_packet.ext_temp = rx_packet.ext_temp;
-	tx_packet.int_temp = rx_packet.int_temp;
-	tx_packet.ext_hum = rx_packet.ext_hum;
-	tx_packet.rad_cps = rx_packet.rad_cps;
-	tx_packet.error_flags = rx_packet.error_flags;
-	tx_packet.checksum = rx_packet.checksum;
+	uart_flush(huart);
+	tx_packet.checksum = Telemetry_CRC16_Modbus(
+		(const uint8_t *)&tx_packet,
+		(uint16_t)(sizeof(TelemetryPacket) - sizeof(tx_packet.checksum))
+	);
 
     // Concat the ethernet header to the packet
-    memcpy(tx_frame, &eth_hdr, 14);
-    memcpy(tx_frame + 14, &tx_packet, 53);
+    memcpy(tx_frame, &eth_hdr, sizeof(EthernetHeader));
+    memcpy(tx_frame + sizeof(EthernetHeader), &tx_packet, sizeof(TelemetryPacket));
 
-    const char *cmd = "AT+TXDATA=67\r\n";
+    const char *cmd = TX_PACKET_COMMAND;
     HAL_UART_Transmit(huart, (uint8_t*)cmd, strlen(cmd), 100);
 
     if (wait_for_ok(1000)) {
-   	      HAL_UART_Transmit(huart, tx_frame, 67, 200);
+	      HAL_UART_Transmit(huart, tx_frame, sizeof(tx_frame), 200);
    	      printf("Packet sent.\r\n");
     } else {
    	      printf("AT: OK wasn't received\n");

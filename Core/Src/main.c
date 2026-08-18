@@ -1286,8 +1286,6 @@ void StartRXELink(void *argument)
 	  if(socket(0, Sn_MR_UDP, UDP_PORT, 0) != 0) {
 	      printf("Error while opening UDP port for RX\r\n");
 	  }
-	  osDelay(5000);
-	  W5500_Init();
 
 	  /* Infinite loop */
 	  for(;;)

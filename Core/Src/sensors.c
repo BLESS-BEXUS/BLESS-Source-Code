@@ -22,6 +22,8 @@ MS5803_01BA_T ms5803;
 ms5803_01ba_prom_t ms5803_prom;
 NPA730M_015A_T npa730;
 
+#define PSI_TO_PA 6894.7573f
+
 static void Sensors_I2C_Lock(void){
 	if(osMutexAcquire(mtxI2C1Handle, osWaitForever) != osOK){
 		Error_Handler();
@@ -161,7 +163,13 @@ uint8_t readSensors(TelemetryPacket *packet){
 	Sensors_I2C_Lock();
 	NPA730_I2C_FETCH_DATA_2BYTES(&hi2c1, NPA730_I2C_ADDRESS, &npa730);
 	Sensors_I2C_Unlock();
-	packet->env_press = npa730.pressure;
+	if (npa730.status == 0U && npa730.pressure >= 0.0f) {
+		/* The NPA730 driver returns psi; telemetry carries whole pascals. */
+		packet->env_press = (uint32_t)(npa730.pressure * PSI_TO_PA + 0.5f);
+	} else {
+		success = 0;
+		packet->error_flags |= 0x20;
+	}
 
 
 
