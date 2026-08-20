@@ -23,15 +23,13 @@ float TMP102_Read_Temp(I2C_HandleTypeDef *hi2c, uint16_t dev_address){
 	//data[1] = 11110000
 	//raw_temp = 11111001 11011111
 
-	// Prepare the temperature
-	uint16_t raw_temp = 0;
-	raw_temp = ((data[0] << 8) | data[1]) >> 4;
+	/* TMP102 normal mode uses a signed 12-bit two's-complement value.
+	 * Sign-extend it before converting to float; keeping it unsigned makes
+	 * every negative temperature look like a very large positive value. */
+	int16_t raw_temp = (int16_t)(((uint16_t)data[0] << 8) | data[1]);
+	raw_temp >>= 4;
 
-	if(raw_temp > TMP102_MAX_TEMP){
-		raw_temp |= 0xF000;
-	}
-
-	return raw_temp * TMP102_TEMP_RES;
+	return (float)raw_temp * TMP102_TEMP_RES;
 
 }
 

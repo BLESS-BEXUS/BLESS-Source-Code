@@ -29,6 +29,8 @@
 typedef struct {
     uint32_t next_write_addr;
     uint32_t packet_count;
+    uint32_t boot_id;
+    uint8_t reset_cause;
 } W25LOG_State_t;
 
 typedef void (*W25LOG_ReadCallback)(uint32_t index, const uint8_t *packet_data, void *ctx);
@@ -36,7 +38,7 @@ typedef void (*W25LOG_ReadCallback)(uint32_t index, const uint8_t *packet_data, 
 
 uint8_t W25LOG_Init(W25LOG_State_t *state);
 
-void W25LOG_Format(W25LOG_State_t *state);
+uint8_t W25LOG_Format(W25LOG_State_t *state);
 
 uint8_t W25LOG_WritePacket(W25LOG_State_t *state, const uint8_t *packet_data);
 

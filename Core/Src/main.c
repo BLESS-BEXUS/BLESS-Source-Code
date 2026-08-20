@@ -50,6 +50,21 @@
 #define FLAG_FLASH_OK (1 << 2)
 #define FLAG_ETHERNET_OK (1 << 3)
 
+/* IWDG timeout = (reload + 1) * prescaler / LSI ~= 4 s at 32 kHz.
+ * The margin accommodates LSI tolerance while ACQUIRE runs every second. */
+#define BLESS_IWDG_PRESCALER (IWDG_PR_PR_2 | IWDG_PR_PR_0) /* /128 */
+#define BLESS_IWDG_RELOAD    999U
+#define BLESS_IWDG_INIT_TIMEOUT_MS 100U
+#define BLESS_IWDG_KEY_RELOAD      0x0000AAAAU
+#define BLESS_IWDG_KEY_ENABLE      0x0000CCCCU
+#define BLESS_IWDG_KEY_WRITE       0x00005555U
+
+/* Set to 1 only for destructive development/cold-test builds. */
+#ifndef BLESS_DEV_FORMAT_FLASH_ON_BOOT
+#define BLESS_DEV_FORMAT_FLASH_ON_BOOT 0
+#endif
+#define BLESS_BOOT_RECORD_COUNT UINT32_MAX
+
 // GNSS VARIABLES
 #define GPS_BUFFER_SIZE 100
 #define GPS_I2C_READ_BUFFER_SIZE 128
@@ -114,8 +129,8 @@ const osThreadAttr_t RXGNSS_attributes = {
 osThreadId_t RXELINKHandle;
 const osThreadAttr_t RXELINK_attributes = {
   .name = "RXELINK",
-  .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityLow7,
+  .stack_size = 512 * 4,
+  .priority = (osPriority_t) osPriorityBelowNormal,
 };
 /* Definitions for TXELINK */
 osThreadId_t TXELINKHandle;
@@ -151,8 +166,11 @@ volatile SystemState_t current_state = STATE_INIT;
 
 // UART VARIABLES
 uint8_t rx_byte;
-uint8_t rx_buffer[512];
-uint16_t rx_index = 0;
+char halow_rx_lines[HALOW_RX_LINE_DEPTH][HALOW_RX_LINE_SIZE];
+volatile uint8_t halow_rx_line_head = 0U;
+volatile uint8_t halow_rx_line_tail = 0U;
+volatile uint8_t halow_rx_line_count = 0U;
+volatile uint16_t rx_index = 0U;
 
 TelemetryPacket rf_data_cache;
 
@@ -165,6 +183,14 @@ volatile uint8_t new_mcs = 0;
 volatile uint8_t flag_update_mcs = 0;
 
 volatile uint8_t flag_dump_spi_data = 0;
+volatile uint8_t flag_save_data = 0U;
+
+volatile uint8_t heater_manual_enabled = 0U;
+volatile uint8_t heater_manual_power_pct = 0U;
+
+volatile uint8_t flag_halow_connect = 0U;
+volatile uint8_t halow_rf_silenced = 0U;
+volatile uint8_t flag_force_halow_tx = 0U;
 
 // E-LINK RX variables
 uint8_t eth_rx_buffer[256];
@@ -178,6 +204,7 @@ osMutexId_t mtxGPSHandle;
 osMutexId_t mtxI2C1Handle;
 
 volatile uint16_t rad_pulse_count = 0;
+uint8_t boot_reset_cause = 0U;
 
 
 
@@ -206,6 +233,10 @@ void StartTXELINK(void *argument);
 
 static void GNSS_ProcessSentence(const char *sentence);
 static void GNSS_FeedByte(uint8_t byte);
+static void ELink_QueueNewestTelemetry(const TelemetryPacket *packet);
+static void ELink_EnsureTxSocket(void);
+static uint8_t BLESS_IWDG_Init(void);
+static void BLESS_IWDG_Refresh(void);
 
 /* USER CODE END PFP */
 
@@ -231,6 +262,17 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
+  if (__HAL_RCC_GET_FLAG(RCC_FLAG_IWDGRST) != RESET) {
+      boot_reset_cause = 1U;
+  } else if (__HAL_RCC_GET_FLAG(RCC_FLAG_SFTRST) != RESET) {
+      boot_reset_cause = 2U;
+  } else if (__HAL_RCC_GET_FLAG(RCC_FLAG_BORRST) != RESET) {
+      boot_reset_cause = 3U;
+  } else if (__HAL_RCC_GET_FLAG(RCC_FLAG_PINRST) != RESET) {
+      boot_reset_cause = 4U;
+  }
+  __HAL_RCC_CLEAR_RESET_FLAGS();
+
   /* Reset forzoso de periféricos tras posible evento de tensión */
     __HAL_RCC_SPI1_FORCE_RESET();
     __HAL_RCC_SPI1_RELEASE_RESET();
@@ -259,7 +301,9 @@ int main(void)
   MX_LPUART1_UART_Init();
   MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
-  HAL_UART_Receive_IT(&huart3, &rx_byte, 1);
+  if(BLESS_IWDG_Init() == 0U){
+	  Error_Handler();
+  }
   InitFlags = osEventFlagsNew(NULL);
   if(InitFlags == NULL){
 	  HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_SET);
@@ -326,6 +370,9 @@ int main(void)
 
   /* creation of TXELINK */
   TXELINKHandle = osThreadNew(StartTXELINK, NULL, &TXELINK_attributes);
+
+  /* Start HaLow UART reception only after TXHALOWHandle exists. */
+  HAL_UART_Receive_IT(&huart3, &rx_byte, 1);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -615,13 +662,14 @@ static void MX_SPI2_Init(void)
   hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi2.Init.NSS = SPI_NSS_SOFT;
-  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
+  /* Conservative operational clock for the flat-cable SPI link. */
+  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
   hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
   hspi2.Init.CRCPolynomial = 7;
   hspi2.Init.CRCLength = SPI_CRC_LENGTH_DATASIZE;
-  hspi2.Init.NSSPMode = SPI_NSS_PULSE_ENABLE;
+  hspi2.Init.NSSPMode = SPI_NSS_PULSE_DISABLE;
   if (HAL_SPI_Init(&hspi2) != HAL_OK)
   {
     Error_Handler();
@@ -753,9 +801,6 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(CS_ETEMP_GPIO_Port, CS_ETEMP_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(INT_ETH_GPIO_Port, INT_ETH_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, RST_ETH_Pin|CS_F1_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin : B1_Pin */
@@ -783,12 +828,19 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : GPIO_GREEN_LED_Pin CS_ETH_Pin */
-  GPIO_InitStruct.Pin = GPIO_GREEN_LED_Pin|CS_ETH_Pin;
+  /*Configure GPIO pin : GPIO_GREEN_LED_Pin */
+  GPIO_InitStruct.Pin = GPIO_GREEN_LED_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIO_GREEN_LED_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : CS_ETH_Pin */
+  GPIO_InitStruct.Pin = CS_ETH_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(CS_ETH_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : RD_DATA_Pin */
   GPIO_InitStruct.Pin = RD_DATA_Pin;
@@ -811,8 +863,14 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(CS_ETEMP_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : INT_ETH_Pin RST_ETH_Pin CS_F1_Pin */
-  GPIO_InitStruct.Pin = INT_ETH_Pin|RST_ETH_Pin|CS_F1_Pin;
+  /* W5500 INTn is unused: leave the MCU pin in high impedance. */
+  GPIO_InitStruct.Pin = INT_ETH_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(INT_ETH_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : RST_ETH_Pin CS_F1_Pin */
+  GPIO_InitStruct.Pin = RST_ETH_Pin|CS_F1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -828,6 +886,68 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+static uint8_t BLESS_IWDG_Init(void)
+{
+    uint32_t start = HAL_GetTick();
+
+#ifdef DEBUG
+    /* Keep breakpoints usable in development builds. The watchdog continues
+     * running normally in Release/mission builds. */
+    __HAL_DBGMCU_FREEZE_IWDG();
+#endif
+
+    /* Starting the IWDG forces its independent LSI clock on. */
+    WRITE_REG(IWDG->KR, BLESS_IWDG_KEY_ENABLE);
+    WRITE_REG(IWDG->KR, BLESS_IWDG_KEY_WRITE);
+    WRITE_REG(IWDG->PR, BLESS_IWDG_PRESCALER);
+    WRITE_REG(IWDG->RLR, BLESS_IWDG_RELOAD);
+
+    while ((IWDG->SR & (IWDG_SR_WVU | IWDG_SR_RVU | IWDG_SR_PVU)) != 0U) {
+        if ((HAL_GetTick() - start) > BLESS_IWDG_INIT_TIMEOUT_MS) {
+            return 0U;
+        }
+    }
+
+    /* Disable window mode and load the configured reload value. */
+    WRITE_REG(IWDG->WINR, IWDG_WINR_WIN);
+    WRITE_REG(IWDG->KR, BLESS_IWDG_KEY_RELOAD);
+    return 1U;
+}
+
+static void BLESS_IWDG_Refresh(void)
+{
+    WRITE_REG(IWDG->KR, BLESS_IWDG_KEY_RELOAD);
+}
+
+static void ELink_QueueNewestTelemetry(const TelemetryPacket *packet)
+{
+    TelemetryPacket stale_packet;
+
+    if (osMessageQueuePut(txElinkMailBoxHandle, packet, 0U, 0U) == osOK) {
+        return;
+    }
+
+    /* Keep the newest 1 Hz sample while the E-Link destination is offline. */
+    (void)osMessageQueueGet(txElinkMailBoxHandle, &stale_packet, NULL, 0U);
+    if (osMessageQueuePut(txElinkMailBoxHandle, packet, 0U, 0U) != osOK) {
+        printf("E-Link telemetry mailbox replacement failed.\r\n");
+    }
+}
+
+static void ELink_EnsureTxSocket(void)
+{
+    while (getSn_SR(1) != SOCK_UDP) {
+        close(1);
+        if (socket(1, Sn_MR_UDP, 5001, 0) == 1) {
+            printf("E-Link TX socket ready on local port 5001.\r\n");
+            return;
+        }
+
+        printf("E-Link TX socket unavailable; retrying.\r\n");
+        osDelay(250);
+    }
+}
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
@@ -845,15 +965,23 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
     {
         if (rx_byte == '\n' || rx_byte == '\r') {
             if (rx_index > 1) {
-                rx_buffer[rx_index] = '\0';
+                halow_rx_lines[halow_rx_line_head][rx_index] = '\0';
+                if (halow_rx_line_count < HALOW_RX_LINE_DEPTH) {
+                    halow_rx_line_head = (uint8_t)((halow_rx_line_head + 1U)
+                        % HALOW_RX_LINE_DEPTH);
+                    halow_rx_line_count++;
+                }
                 rx_index = 0;
-                osThreadFlagsSet(TXHALOWHandle, 0x01);
+                if (TXHALOWHandle != NULL) {
+                    osThreadFlagsSet(TXHALOWHandle, 0x01);
+                }
             } else {
                 rx_index = 0;
             }
         } else {
-            if (rx_index < 510) {
-                rx_buffer[rx_index] = rx_byte;
+            if (halow_rx_line_count < HALOW_RX_LINE_DEPTH
+                    && rx_index < (HALOW_RX_LINE_SIZE - 1U)) {
+                halow_rx_lines[halow_rx_line_head][rx_index] = (char)rx_byte;
                 rx_index++;
             }
         }
@@ -977,6 +1105,8 @@ void StartDefaultTask(void *argument)
 void StartAcquire(void *argument)
 {
   /* USER CODE BEGIN StartAcquire */
+  /* ACQUIRE is the sole owner of the watchdog refresh. */
+  BLESS_IWDG_Refresh();
   osDelay(1000);
   Sensors_Init();
 
@@ -1002,6 +1132,7 @@ void StartAcquire(void *argument)
   if(SensorsSelfCheck()){
 	  osEventFlagsSet(InitFlags, FLAG_SENSORS_OK);
   }
+  BLESS_IWDG_Refresh();
 
 
   //osEventFlagsWait(InitFlags, FLAG_SENSORS_OK | FLAG_HALOW_OK | FLAG_FLASH_OK | FLAG_ETHERNET_OK, osFlagsWaitAll, osWaitForever);
@@ -1022,65 +1153,106 @@ void StartAcquire(void *argument)
   /* Infinite loop */
   for(;;)
   {
-	if(current_state == STATE_FLIGHT){
-		HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_SET);
-		HAL_GPIO_WritePin(GPIO_YELLOW_LED_GPIO_Port, GPIO_YELLOW_LED_Pin, GPIO_PIN_RESET);
-
-
 		TelemetryPacket packet = {0};
-		//packet.sync = 0xABCD;
-		packet.count = packet_counter;
-		packet.timestamp = HAL_GetTick();
-		packet_counter++;
-
-		readSensors(&packet);
+		SystemState_t packet_state;
 
 		taskENTER_CRITICAL();
-		packet.rad_cps = rad_pulse_count;
-		rad_pulse_count = 0;
+		packet_state = current_state;
 		taskEXIT_CRITICAL();
 
-		if (osMutexAcquire(mtxGPSHandle, osWaitForever) == osOK)
-		{
-		    packet.gps_lat = actual_gps.lat;
-		    packet.gps_lon = actual_gps.lon;
-		    packet.gps_alt = actual_gps.alt;
-		    packet.gps_fix_sats = actual_gps.fix_sats;
-		    osMutexRelease(mtxGPSHandle);
-		}
-
-		// Adjust heater
-		error = set_point - (packet.int_temp / 100.0f);
-		p = KP * error;
-		accumulative_error = accumulative_error + error;
-		i = KI * accumulative_error;
-		d = KD * (error - last_error);
-
-		output_power = p + i + d;
-		last_error = error;
-
-		if (output_power >= 100.0 || output_power <= 0.0){
-			accumulative_error = accumulative_error - error;
-		}
-		output_power  = (output_power > 100.0) ? 100.0 : output_power;
-		output_power  = (output_power < 0.0) ? 0.0 : output_power;
-
-		// Update PWM with ouputpower
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, (uint32_t)output_power);
-		printf("Heater Power: %.2f", output_power);
-		packet.heater_power = (uint16_t)(output_power * 100.0f);
-
-		// Add packet to the queues
-		osMessageQueuePut(txMailBoxHandle, &packet, 0, 100);
-		osMessageQueuePut(txElinkMailBoxHandle, &packet, 0, 100);
-		osMessageQueuePut(logDataQueueHandle, &packet, 0, 100);
+	if(packet_state == STATE_FLIGHT){
+		HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_SET);
+		HAL_GPIO_WritePin(GPIO_YELLOW_LED_GPIO_Port, GPIO_YELLOW_LED_Pin, GPIO_PIN_RESET);
 	}
-	else if(current_state == STATE_IDDLE){
+	else{
 		HAL_GPIO_WritePin(GPIO_YELLOW_LED_GPIO_Port, GPIO_YELLOW_LED_Pin, GPIO_PIN_SET);
 		HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_SET);
 	}
 
+	packet.count = packet_counter;
+	packet.timestamp = HAL_GetTick();
+	packet_counter++;
+
+	readSensors(&packet);
+
+	/* Snapshot the latest HaLow statistics before distributing the packet.
+	 * This makes flash, HaLow and E-Link receive the same complete data. */
+	taskENTER_CRITICAL();
+	packet.rf_rssi = rf_data_cache.rf_rssi;
+	packet.rf_snr = rf_data_cache.rf_snr;
+	packet.rf_freq_dev = rf_data_cache.rf_freq_dev;
+	packet.rf_success_rate = rf_data_cache.rf_success_rate;
+	packet.rf_noise_floor = rf_data_cache.rf_noise_floor;
+	packet.rf_tx_mcs = rf_data_cache.rf_tx_mcs;
+	packet.temp_chip = rf_data_cache.temp_chip;
+	packet.system_state = (uint16_t)packet_state;
+	packet.rad_cps = rad_pulse_count;
+	rad_pulse_count = 0;
+	taskEXIT_CRITICAL();
+
+	if (osMutexAcquire(mtxGPSHandle, osWaitForever) == osOK)
+	{
+	    packet.gps_lat = actual_gps.lat;
+	    packet.gps_lon = actual_gps.lon;
+	    packet.gps_alt = actual_gps.alt;
+	    packet.gps_fix_sats = actual_gps.fix_sats;
+	    osMutexRelease(mtxGPSHandle);
+	}
+
+	if(packet_state == STATE_FLIGHT){
+		uint8_t manual_enabled;
+		uint8_t manual_power;
+
+		taskENTER_CRITICAL();
+		manual_enabled = heater_manual_enabled;
+		manual_power = heater_manual_power_pct;
+		taskEXIT_CRITICAL();
+
+		if(manual_enabled != 0U){
+			output_power = (float)manual_power;
+			accumulative_error = 0.0f;
+			last_error = 0.0f;
+		}else{
+			/* Autonomous PID control. */
+			error = set_point - (packet.int_temp / 100.0f);
+			p = KP * error;
+			accumulative_error = accumulative_error + error;
+			i = KI * accumulative_error;
+			d = KD * (error - last_error);
+
+			output_power = p + i + d;
+			last_error = error;
+
+			if (output_power >= 100.0 || output_power <= 0.0){
+				accumulative_error = accumulative_error - error;
+			}
+			output_power  = (output_power > 100.0) ? 100.0 : output_power;
+			output_power  = (output_power < 0.0) ? 0.0 : output_power;
+		}
+
+		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, (uint32_t)output_power);
+	}else{
+		output_power = 0.0f;
+		accumulative_error = 0.0f;
+		last_error = 0.0f;
+		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 0U);
+	}
+
+	printf("Heater Power: %.2f", output_power);
+	packet.heater_power = (uint16_t)(output_power * 100.0f);
+	Telemetry_Finalize(&packet);
+	Telemetry_UpdateLatest(&packet);
+
+	/* E-Link is the command/status channel and remains alive in every state. */
+	ELink_QueueNewestTelemetry(&packet);
+
+	if(packet_state == STATE_FLIGHT){
+		osMessageQueuePut(txMailBoxHandle, &packet, 0, 100);
+		osMessageQueuePut(logDataQueueHandle, &packet, 0, 100);
+	}
+
 	previousWakeTime += 1000;
+	BLESS_IWDG_Refresh();
 	osDelayUntil(previousWakeTime);
   }
   /* USER CODE END StartAcquire */
@@ -1097,13 +1269,13 @@ void StartTXHalow(void *argument)
 {
   /* USER CODE BEGIN StartTXHalow */
 	  osDelay(5000);
-	  if(SensorsSelfCheck()){
+	  if(Config_HaLow(&huart3)){
 		  osEventFlagsSet(InitFlags, FLAG_HALOW_OK);
 	  }
 
 	  TelemetryPacket rx_packet; // Telemetry packet from ACQUIRE task
 	  rx_index = 0;
-	  memset(rx_buffer, 0, sizeof(rx_buffer));
+	  memset(halow_rx_lines, 0, sizeof(halow_rx_lines));
 
 	  memset(&rf_data_cache, 0, sizeof(TelemetryPacket));
 
@@ -1115,38 +1287,55 @@ void StartTXHalow(void *argument)
 		  received_flags = osThreadFlagsWait(0x01, osFlagsWaitAny, 100);
 
 		  if((received_flags & osFlagsError) == 0 && (received_flags & 0x01)){
-			  HaLow_Extract_Data((char *)rx_buffer, &rf_data_cache);
+			  char line[HALOW_RX_LINE_SIZE];
+			  while(HaLow_PopRxLine(line, sizeof(line))){
+				  HaLow_Extract_Data(line, &rf_data_cache);
+			  }
 		  }
-		  if(flag_update_tx_power){
+		  if(flag_halow_connect){
+			  flag_halow_connect = 0U;
+			  if(Config_HaLow(&huart3)){
+				  osEventFlagsSet(InitFlags, FLAG_HALOW_OK);
+			  }
+		  }
+		  if(flag_update_tx_power && (halow_rf_silenced == 0U)){
 			  char str_power_tx[8];
 			  snprintf(str_power_tx, sizeof(str_power_tx), "%d", new_tx_power);
-			  HaLow_Send_Config_Command(&huart3, "TXPOWER", str_power_tx);
+			  (void)HaLow_Send_Config_Command(&huart3, "TXPOWER", str_power_tx);
 			  flag_update_tx_power = 0;
 		  }
-		  if(flag_update_mcs){
+		  if(flag_update_mcs && (halow_rf_silenced == 0U)){
 			  char str_mcs[8];
 			  snprintf(str_mcs, sizeof(str_mcs), "%d", new_mcs);
-			  HaLow_Send_Config_Command(&huart3, "TX_MCS", str_mcs);
+			  (void)HaLow_Send_Config_Command(&huart3, "TX_MCS", str_mcs);
 			  flag_update_mcs = 0;
 		  }
-		  if(current_state == STATE_FLIGHT){
+		  if(flag_force_halow_tx && (halow_rf_silenced == 0U)){
+			  TelemetryPacket forced_packet;
+			  flag_force_halow_tx = 0U;
+			  if(Telemetry_GetLatest(&forced_packet)){
+				  Tx_HaLow_Packet(&huart3, forced_packet);
+				  last_tx_time = HAL_GetTick();
+			  }
+		  }
+		  if((current_state == STATE_FLIGHT) && (halow_rf_silenced == 0U)){
 			  HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_SET);
 			  HAL_GPIO_WritePin(GPIO_YELLOW_LED_GPIO_Port, GPIO_YELLOW_LED_Pin, GPIO_PIN_RESET);
 
 			  if((HAL_GetTick() -  last_tx_time) >= DUTY_CYCLE_MS){
-				  osMessageQueueGet(txMailBoxHandle, &rx_packet, NULL, 0);
+				  if(osMessageQueueGet(txMailBoxHandle, &rx_packet, NULL, 0) == osOK){
+					  rx_packet.rf_rssi = rf_data_cache.rf_rssi;
+					  rx_packet.rf_snr = rf_data_cache.rf_snr;
+				      rx_packet.rf_noise_floor = rf_data_cache.rf_noise_floor;
+				      rx_packet.rf_freq_dev = rf_data_cache.rf_freq_dev;
+				      rx_packet.rf_tx_mcs = rf_data_cache.rf_tx_mcs;
+				      rx_packet.temp_chip = rf_data_cache.temp_chip;
 
-				  rx_packet.rf_rssi = rf_data_cache.rf_rssi;
-				  rx_packet.rf_snr = rf_data_cache.rf_snr;
-			      rx_packet.rf_noise_floor = rf_data_cache.rf_noise_floor;
-			      rx_packet.rf_freq_dev = rf_data_cache.rf_freq_dev;
-			      rx_packet.rf_tx_mcs = rf_data_cache.rf_tx_mcs;
-			      rx_packet.temp_chip = rf_data_cache.temp_chip;
+					  printTelemetry(&rx_packet); // Just during tests
 
-				  printTelemetry(&rx_packet); // Just during tests
-
-				  Tx_HaLow_Packet(&huart3, rx_packet);
-				  last_tx_time = HAL_GetTick();
+					  Tx_HaLow_Packet(&huart3, rx_packet);
+					  last_tx_time = HAL_GetTick();
+				  }
 			  }
 		  }
 		  else if(current_state == STATE_IDDLE){
@@ -1178,39 +1367,69 @@ void StartLogData(void *argument)
 
 	  if (flash_present) {
 	      log_ready = W25LOG_Init(&log_state);
+	      log_state.reset_cause = boot_reset_cause;
 	  } else {
 	      printf("W25QXX NO RESPONDE\r\n");
 	  }
 
+	  #if BLESS_DEV_FORMAT_FLASH_ON_BOOT
+	  if (flash_present && log_ready && W25LOG_Format(&log_state) == 0U) {
+	      log_ready = 0U;
+	      printf("Flash format failed\r\n");
+	  }
+	  #endif
+
+	  if (flash_present && log_ready) {
+	      /* Persist the boot even if the system resets before its first 1 Hz
+	       * acquisition. UINT32_MAX distinguishes this marker from samples. */
+	      TelemetryPacket boot_record = {0};
+	      boot_record.timestamp = HAL_GetTick();
+	      boot_record.count = BLESS_BOOT_RECORD_COUNT;
+	      boot_record.system_state = (uint16_t)STATE_INIT;
+	      Telemetry_Finalize(&boot_record);
+	      if (W25LOG_WritePacket(&log_state, (uint8_t *)&boot_record) != 0U) {
+	          log_ready = 0U;
+	          printf("Flash boot record failed\r\n");
+	      }
+	  }
+
 	  if (flash_present && log_ready) {
 	      osEventFlagsSet(InitFlags, FLAG_FLASH_OK);
-	      printf("Flash Ready. Storaged Packets: %lu\r\n", log_state.packet_count);
+	      printf("Flash Ready. Stored Packets: %lu, Boot ID: %lu, Reset: %u\r\n",
+	             log_state.packet_count, log_state.boot_id,
+	             log_state.reset_cause);
 	  } else {
 	      printf("Flash Init Error \r\n");
 	  }
 
-	  /** COLD TEST **/
-	  W25LOG_Format(&log_state); // UNCOMMENT TO FORMAT SPI
-	  //flag_dump_spi_data = 1; //UNCOMENT TO DUMP DATA
-
 	  /* Infinite loop */
 	  for(;;)
 	  {
-		if(current_state == STATE_FLIGHT){
-			if (osMessageQueueGet(logDataQueueHandle, &packet_to_log, NULL, 100) == osOK) {
-				if (flash_present && log_ready) {
-					if (W25LOG_WritePacket(&log_state, (uint8_t*)&packet_to_log) != 0) {
-						printf("Full Flash\r\n");
-					}else{
-						printf("packet logged. Temp: %.2f", packet_to_log.ext_temp / 100.0f);
-					}
-				}
+		if (osMessageQueueGet(logDataQueueHandle, &packet_to_log, NULL, 100) == osOK
+				&& flash_present && log_ready) {
+			uint8_t write_status = W25LOG_WritePacket(
+					&log_state, (uint8_t*)&packet_to_log);
+			if (write_status != 0U) {
+				printf("Flash log write failed (%u)\r\n", write_status);
 			}
-		}else{
-			osDelay(100);
 		}
 
-		if(flag_dump_spi_data){
+		if(flag_save_data){
+			/* Writes are synchronous. Draining the queue guarantees every sample
+			 * already produced before this command is committed to flash. */
+			while(osMessageQueueGet(logDataQueueHandle, &packet_to_log,
+					NULL, 0U) == osOK){
+				if(flash_present && log_ready
+						&& W25LOG_WritePacket(&log_state,
+								(uint8_t*)&packet_to_log) != 0U){
+					printf("SAVE_DATA flash write failed\r\n");
+					break;
+				}
+			}
+			flag_save_data = 0U;
+		}
+
+		if(flag_dump_spi_data && flash_present && log_ready){
 			W25LOG_DumpToUART(&huart2, &log_state);
 			flag_dump_spi_data = 0;
 		}
@@ -1279,26 +1498,53 @@ void StartRXGNSS(void *argument)
 void StartRXELink(void *argument)
 {
   /* USER CODE BEGIN StartRXELink */
-	if(W5500_Init() == 1){
-	      osEventFlagsSet(InitFlags, FLAG_ETHERNET_OK);
-	  }
+	_Static_assert(sizeof(ELinkCommand) == 10U, "Unexpected E-Link command size");
 
-	  if(socket(0, Sn_MR_UDP, UDP_PORT, 0) != 0) {
-	      printf("Error while opening UDP port for RX\r\n");
-	  }
+	/* Allow the W5500 supply and 25 MHz oscillator to settle after power-up. */
+	printf("Waiting 2 seconds before W5500 initialization...\r\n");
+	osDelay(2000);
+
+	while (W5500_Init() != 1) {
+		printf("W5500 initialization failed; retrying in 1 second\r\n");
+		osDelay(1000);
+	}
+	osEventFlagsSet(InitFlags, FLAG_ETHERNET_OK);
+
+	while (socket(0, Sn_MR_UDP, UDP_PORT, 0) != 0) {
+		printf("Error while opening UDP port for RX; retrying\r\n");
+		osDelay(1000);
+	}
+	printf("E-Link UDP RX ready on W5500 port %u (socket 0).\r\n", UDP_PORT);
 
 	  /* Infinite loop */
 	  for(;;)
 	  {
-		  if(current_state != STATE_FLIGHT){
-		      uint16_t data_len = getSn_RX_RSR(0);
+		  if (getSn_SR(0) != SOCK_UDP) {
+			  printf("E-Link RX socket left UDP state; reopening port %u.\r\n",
+			         UDP_PORT);
+			  close(0);
+			  while (socket(0, Sn_MR_UDP, UDP_PORT, 0) != 0) {
+				  osDelay(100);
+			  }
+		  }
+
+		  uint16_t data_len = getSn_RX_RSR(0);
 
 		      if(data_len > 0)
 		      {
 		          uint8_t target_ip[4];
 		          uint16_t target_port;
+		          uint16_t receive_capacity = (uint16_t)sizeof(eth_rx_buffer);
+		          if (data_len < receive_capacity) {
+		              receive_capacity = data_len;
+		          }
 
-		          int32_t len = recvfrom(0, eth_rx_buffer, data_len, target_ip, &target_port);
+		          int32_t len = recvfrom(0, eth_rx_buffer, receive_capacity,
+		                                 target_ip, &target_port);
+		          printf("E-Link UDP RX: %ld bytes from %u.%u.%u.%u:%u.\r\n",
+		                 (long)len,
+		                 target_ip[0], target_ip[1], target_ip[2], target_ip[3],
+		                 target_port);
 
 		          if(len == sizeof(ELinkCommand)) {
 		              ELinkCommand incoming_cmd;
@@ -1346,8 +1592,7 @@ void StartRXELink(void *argument)
 		              printf("Wrong Size (%ld bytes, expected %d).\r\n", len, sizeof(ELinkCommand));
 		          }
 		      }
-		      osDelay(50);
-		  }
+		  osDelay(10);
 
 	  }
   /* USER CODE END StartRXELink */
@@ -1366,25 +1611,37 @@ void StartTXELINK(void *argument)
 	TelemetryPacket rx_packet;
 	uint8_t target_ip[4] = GS_IP;
 	uint16_t target_port = GS_PORT;
-/*
-	if(socket(1, Sn_MR_UDP, 5001, 0) != 1) {
-	        printf("Error opening socket for TX E-Link\r\n");
-	    }*/
+
+	osEventFlagsWait(InitFlags, FLAG_ETHERNET_OK,
+	                 osFlagsWaitAny, osWaitForever);
+
+	ELink_EnsureTxSocket();
+
   /* Infinite loop */
   for(;;)
   {
-	  if(current_state != STATE_FLIGHT){
-		  if(osMessageQueueGet(txElinkMailBoxHandle, &rx_packet, NULL, osWaitForever) == osOK){
-			  if(current_state == STATE_FLIGHT){
-				  int32_t sent_bytes = sendto(1, (uint8_t*)&rx_packet, sizeof(TelemetryPacket), target_ip, target_port);
-				  if (sent_bytes < 0){
-					  printf("Error transmitting Telemetry via ELINK");
-				  }
+	  if (osMessageQueueGet(txElinkMailBoxHandle, &rx_packet,
+	                        NULL, osWaitForever) == osOK) {
+		  /* Recalculate immediately before transmission in case the packet is
+		   * modified by future processing stages. */
+		  Telemetry_Finalize(&rx_packet);
+		  ELink_EnsureTxSocket();
+		  int32_t sent_bytes = sendto(1, (uint8_t *)&rx_packet,
+		                                sizeof(TelemetryPacket),
+		                                target_ip, target_port);
+		  if (sent_bytes < 0) {
+			  uint8_t socket_state = getSn_SR(1);
+			  printf("Error transmitting Telemetry via ELINK (%ld), socket 0x%02X.\r\n",
+			         (long)sent_bytes, socket_state);
+
+			  /* A destination timeout leaves UDP usable. Reopen only when the
+			   * W5500 itself reports that socket 1 is no longer UDP. */
+			  if (socket_state != SOCK_UDP) {
+				  close(1);
+				  ELink_EnsureTxSocket();
 			  }
 		  }
 	  }
-
-
   }
   /* USER CODE END StartTXELINK */
 }

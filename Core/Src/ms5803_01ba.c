@@ -90,7 +90,10 @@ uint32_t MS5803_01BA_READ_RAW(I2C_HandleTypeDef *hi2c, uint16_t dev_address, uin
 		return 0;
 	}
 
-	HAL_I2C_Master_Receive(hi2c, dev_address, data, 3, 100);
+	status = HAL_I2C_Master_Receive(hi2c, dev_address, data, 3, 100);
+	if(status != HAL_OK){
+		return 0;
+	}
 
 	return (data[0] << 16) | (data[1] << 8) | data[2];
 }

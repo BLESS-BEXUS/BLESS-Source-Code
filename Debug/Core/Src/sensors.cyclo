@@ -1,5 +1,8 @@
-../Core/Src/sensors.c:27:13:Sensors_I2C_Lock	2
-../Core/Src/sensors.c:33:13:Sensors_I2C_Unlock	1
-../Core/Src/sensors.c:38:6:Sensors_Init	2
-../Core/Src/sensors.c:49:9:SensorsSelfCheck	7
-../Core/Src/sensors.c:95:9:readSensors	8
+../Core/Src/sensors.c:29:13:Sensors_I2C_Lock	2
+../Core/Src/sensors.c:35:13:Sensors_I2C_Unlock	1
+../Core/Src/sensors.c:39:13:Sensors_I2C_RecoverBus	5
+../Core/Src/sensors.c:84:16:Sensors_I2C_IsReady	2
+../Core/Src/sensors.c:95:16:Sensors_TemperatureIsValid	3
+../Core/Src/sensors.c:100:6:Sensors_Init	3
+../Core/Src/sensors.c:118:9:SensorsSelfCheck	12
+../Core/Src/sensors.c:195:9:readSensors	14

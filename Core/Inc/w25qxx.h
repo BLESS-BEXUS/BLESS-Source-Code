@@ -19,6 +19,7 @@
 #define W25X_SectorErase      0x20
 #define W25X_ChipErase        0xC7
 #define W25X_JedecID          0x9F
+#define W25QXX_READY_TIMEOUT_MS 1000U
 
 /* --- W25Q64 at SPI1 (PA5=SCK, PA6=MISO, PA7=MOSI, PB6=CS) --- */
 #define W25QXX_SPI_HANDLE     hspi1
@@ -33,11 +34,11 @@ typedef struct {
 
 uint8_t W25QXX_Init(W25QXX_ID_t *id);
 void    W25QXX_ReadID(W25QXX_ID_t *id);
-void    W25QXX_ReadData(uint32_t addr, uint8_t *buf, uint32_t len);
-void    W25QXX_PageProgram(uint32_t addr, uint8_t *buf, uint16_t len);
-void    W25QXX_SectorErase(uint32_t addr);
+uint8_t W25QXX_ReadData(uint32_t addr, uint8_t *buf, uint32_t len);
+uint8_t W25QXX_PageProgram(uint32_t addr, uint8_t *buf, uint16_t len);
+uint8_t W25QXX_SectorErase(uint32_t addr);
 uint8_t W25QXX_ReadStatus(void);
-void    W25QXX_WaitBusy(void);
+uint8_t W25QXX_WaitBusy(uint32_t timeout_ms);
 
 
 #endif /* INC_W25QXX_H_ */

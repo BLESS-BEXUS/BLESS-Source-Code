@@ -1,2 +1,7 @@
-../Core/Src/telemetry.c:16:5:_write	1
-../Core/Src/telemetry.c:23:6:printTelemetry	8
+../Core/Src/telemetry.c:21:10:Telemetry_CRC16_Modbus	4
+../Core/Src/telemetry.c:34:6:Telemetry_Finalize	2
+../Core/Src/telemetry.c:45:6:Telemetry_UpdateLatest	3
+../Core/Src/telemetry.c:56:9:Telemetry_GetLatest	4
+../Core/Src/telemetry.c:73:20:Telemetry_StateText	5
+../Core/Src/telemetry.c:86:5:_write	1
+../Core/Src/telemetry.c:93:6:printTelemetry	8

@@ -21,7 +21,8 @@ typedef struct{
 }NPA730M_015A_T;
 
 /** FUNCTIONS DEFINITION **/
-void NPA730_I2C_FETCH_DATA_2BYTES(I2C_HandleTypeDef *hi2c, uint8_t dev_address, NPA730M_015A_T *npa730);
+HAL_StatusTypeDef NPA730_I2C_FETCH_DATA_2BYTES(I2C_HandleTypeDef *hi2c,
+		uint8_t dev_address, NPA730M_015A_T *npa730);
 
 
 #endif /* INC_NPA730N015A_H_ */

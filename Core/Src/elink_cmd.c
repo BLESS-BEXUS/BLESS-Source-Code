@@ -9,6 +9,9 @@
 #include "main.h"
 #include "txhalow.h"
 #include "elink_cmd.h"
+#include "cmsis_os.h"
+
+extern osMessageQueueId_t txElinkMailBoxHandle;
 
 
 /** UTILITY FUNCTIONS **/
@@ -121,15 +124,23 @@ void CMD_SYS_STOP(){
 
 /*** SURVIVAL COMMANDS ***/
 uint8_t CMD_HEAT_MANUAL(uint8_t value){
-	return 0;
+	if(value > 100U){
+		return 0U;
+	}
+
+	heater_manual_power_pct = value;
+	heater_manual_enabled = 1U;
+	return 1U;
 }
 void CMD_HEAT_AUTO(){
-
+	heater_manual_enabled = 0U;
 }
 
 /*** RF COMMANDS ***/
 void CMD_HALOW_CONNECT(){
-
+	halow_rf_silenced = 0U;
+	flag_halow_connect = 1U;
+	flag_force_halow_tx = 1U;
 }
 void CMD_SET_TX_POWER(uint8_t tx_power){
 	new_tx_power = tx_power;
@@ -142,16 +153,32 @@ void CMD_SET_MCS_MODE(uint8_t mcs_mode){
 }
 
 void CMD_RF_SILENCE(){
-
+	/* Software TX inhibit: the published T-HaLow AT interface has no
+	 * documented RF-off command. In AP mode the module may still emit its
+	 * own management/beacon frames even though BLESS sends no payloads. */
+	halow_rf_silenced = 1U;
+	flag_force_halow_tx = 0U;
 }
 
 /*** DATA MANAGEMENT COMMANDS ***/
 void CMD_SAVE_DATA(){
-	flag_dump_spi_data = 1;
+	flag_save_data = 1U;
 }
 void CMD_SEND_HALOW(){
-
+	if(halow_rf_silenced == 0U){
+		flag_force_halow_tx = 1U;
+	}
 }
 void CMD_SEND_ELINK(){
+	TelemetryPacket packet;
+	TelemetryPacket stale_packet;
 
+	if(Telemetry_GetLatest(&packet) == 0U){
+		return;
+	}
+
+	if(osMessageQueuePut(txElinkMailBoxHandle, &packet, 0U, 0U) != osOK){
+		(void)osMessageQueueGet(txElinkMailBoxHandle, &stale_packet, NULL, 0U);
+		(void)osMessageQueuePut(txElinkMailBoxHandle, &packet, 0U, 0U);
+	}
 }

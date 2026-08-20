@@ -10,8 +10,78 @@
 
 #include "main.h"
 #include "telemetry.h"
+#include "FreeRTOS.h"
+#include "task.h"
 
 extern UART_HandleTypeDef huart2;
+
+static TelemetryPacket latest_telemetry;
+static uint8_t latest_telemetry_valid = 0U;
+
+uint16_t Telemetry_CRC16_Modbus(const uint8_t *data, uint16_t length) {
+    uint16_t crc = 0xFFFFU;
+
+    for (uint16_t i = 0U; i < length; ++i) {
+        crc ^= data[i];
+        for (uint8_t bit = 0U; bit < 8U; ++bit) {
+            crc = (crc & 1U) ? (crc >> 1) ^ 0xA001U : crc >> 1;
+        }
+    }
+
+    return crc;
+}
+
+void Telemetry_Finalize(TelemetryPacket *packet) {
+    if (packet == NULL) {
+        return;
+    }
+
+    packet->checksum = Telemetry_CRC16_Modbus(
+        (const uint8_t *)packet,
+        (uint16_t)(sizeof(TelemetryPacket) - sizeof(packet->checksum))
+    );
+}
+
+void Telemetry_UpdateLatest(const TelemetryPacket *packet) {
+    if (packet == NULL) {
+        return;
+    }
+
+    taskENTER_CRITICAL();
+    latest_telemetry = *packet;
+    latest_telemetry_valid = 1U;
+    taskEXIT_CRITICAL();
+}
+
+uint8_t Telemetry_GetLatest(TelemetryPacket *packet) {
+    uint8_t valid;
+
+    if (packet == NULL) {
+        return 0U;
+    }
+
+    taskENTER_CRITICAL();
+    valid = latest_telemetry_valid;
+    if (valid != 0U) {
+        *packet = latest_telemetry;
+    }
+    taskEXIT_CRITICAL();
+
+    return valid;
+}
+
+static const char *Telemetry_StateText(uint16_t state) {
+    switch (state) {
+    case STATE_INIT:
+        return "INIT";
+    case STATE_IDDLE:
+        return "IDLE";
+    case STATE_FLIGHT:
+        return "FLIGHT";
+    default:
+        return "UNKNOWN";
+    }
+}
 
 int _write(int file, char *ptr, int len) {
     HAL_UART_Transmit(&huart2, (uint8_t*)ptr, len, HAL_MAX_DELAY);
@@ -70,7 +140,9 @@ void printTelemetry(const TelemetryPacket *packet) {
     printf(" - Freq Dev     : %d Hz\r\n", packet->rf_freq_dev);
     printf(" - Exito (Tx)   : %u %%\r\n", packet->rf_success_rate);
     printf(" - Noise Floor  : %d dBm\r\n", packet->rf_noise_floor);
-    printf(" - MCS / Volt   : %u  /  %u mV\r\n", packet->rf_tx_mcs, packet->rf_volt);
+    printf(" - MCS          : %u\r\n", packet->rf_tx_mcs);
+    printf(" - Estado       : %s (%u)\r\n",
+           Telemetry_StateText(packet->system_state), packet->system_state);
     printf("--------------------------------------------------\r\n");
 
     // 4. GNSS

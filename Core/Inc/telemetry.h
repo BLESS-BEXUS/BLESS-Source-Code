@@ -8,6 +8,12 @@
 #ifndef INC_TELEMETRY_H_
 #define INC_TELEMETRY_H_
 
+#define TELEMETRY_ERROR_INT_TEMP      (1U << 0)
+#define TELEMETRY_ERROR_EXT_TEMP      (1U << 1)
+#define TELEMETRY_ERROR_EXT_HUM       (1U << 2)
+#define TELEMETRY_ERROR_HALOW_CURRENT (1U << 4)
+#define TELEMETRY_ERROR_PRESSURE      (1U << 5)
+
 typedef struct TelemetryPacket{
 	// HEADER
 	uint16_t sync;
@@ -27,7 +33,7 @@ typedef struct TelemetryPacket{
 	uint8_t rf_success_rate;
 	int16_t rf_noise_floor;
 	uint8_t rf_tx_mcs;
-	uint16_t rf_volt; // RF Log Detector
+	uint16_t system_state; // SystemState_t encoded as uint16_t (keeps packet layout)
 
 	// HARDWARE
 	uint16_t halow_curr;
@@ -46,7 +52,11 @@ typedef struct TelemetryPacket{
 	uint16_t checksum;
 } __attribute__((packed)) TelemetryPacket;
 
-void printTelemetry();
+uint16_t Telemetry_CRC16_Modbus(const uint8_t *data, uint16_t length);
+void Telemetry_Finalize(TelemetryPacket *packet);
+void Telemetry_UpdateLatest(const TelemetryPacket *packet);
+uint8_t Telemetry_GetLatest(TelemetryPacket *packet);
+void printTelemetry(const TelemetryPacket *packet);
 
 
 

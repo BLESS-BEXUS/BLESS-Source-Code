@@ -53,6 +53,7 @@
 //*****************************************************************************
 //#include <stdio.h>
 #include "w5500.h"
+#include "../wizchip_port.h"
 
 #define _W5500_SPI_VDM_OP_          0x00
 #define _W5500_SPI_FDM_OP_LEN1_     0x01
@@ -61,6 +62,39 @@
 
 #if   (_WIZCHIP_ == 5500)
 ////////////////////////////////////////////////////
+
+uint8_t WIZCHIP_READ(uint32_t AddrSel) {
+    uint8_t value = 0xFFU;
+
+    AddrSel |= (_W5500_SPI_READ_ | _W5500_SPI_VDM_OP_);
+    WIZCHIP_CRITICAL_ENTER();
+    (void)W5500_SPI_ReadFrame(AddrSel, &value, 1U);
+    WIZCHIP_CRITICAL_EXIT();
+    return value;
+}
+
+void WIZCHIP_WRITE(uint32_t AddrSel, uint8_t wb) {
+    AddrSel |= (_W5500_SPI_WRITE_ | _W5500_SPI_VDM_OP_);
+    WIZCHIP_CRITICAL_ENTER();
+    (void)W5500_SPI_WriteFrame(AddrSel, &wb, 1U);
+    WIZCHIP_CRITICAL_EXIT();
+}
+
+void WIZCHIP_READ_BUF(uint32_t AddrSel, uint8_t *pBuf, uint16_t len) {
+    AddrSel |= (_W5500_SPI_READ_ | _W5500_SPI_VDM_OP_);
+    WIZCHIP_CRITICAL_ENTER();
+    (void)W5500_SPI_ReadFrame(AddrSel, pBuf, len);
+    WIZCHIP_CRITICAL_EXIT();
+}
+
+void WIZCHIP_WRITE_BUF(uint32_t AddrSel, uint8_t *pBuf, uint16_t len) {
+    AddrSel |= (_W5500_SPI_WRITE_ | _W5500_SPI_VDM_OP_);
+    WIZCHIP_CRITICAL_ENTER();
+    (void)W5500_SPI_WriteFrame(AddrSel, pBuf, len);
+    WIZCHIP_CRITICAL_EXIT();
+}
+
+#if 0 /* Legacy split-HAL implementation. */
 
 uint8_t  WIZCHIP_READ(uint32_t AddrSel) {
     uint8_t ret;
@@ -170,6 +204,8 @@ void     WIZCHIP_WRITE_BUF(uint32_t AddrSel, uint8_t* pBuf, uint16_t len) {
     WIZCHIP_CRITICAL_EXIT();
 }
 
+
+#endif
 
 uint16_t getSn_TX_FSR(uint8_t sn) {
     uint16_t val = 0, val1 = 0;

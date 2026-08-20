@@ -52,6 +52,14 @@ extern volatile uint8_t new_mcs;
 extern volatile uint8_t flag_update_mcs;
 
 extern volatile uint8_t flag_dump_spi_data;
+extern volatile uint8_t flag_save_data;
+
+extern volatile uint8_t heater_manual_enabled;
+extern volatile uint8_t heater_manual_power_pct;
+
+extern volatile uint8_t flag_halow_connect;
+extern volatile uint8_t halow_rf_silenced;
+extern volatile uint8_t flag_force_halow_tx;
 
 /** UTILITY FUNCTIONS **/
 

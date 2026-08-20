@@ -10,7 +10,7 @@
 
 #include "main.h"
 
-#define GS_IP {10, 86, 200, 5}
+#define GS_IP {10, 86, 200, 6}
 #define GS_PORT 5000
 
 /**
@@ -27,6 +27,10 @@ void W5500_Select(void);
 void W5500_Deselect(void);
 uint8_t W5500_ReadByte(void);
 void W5500_WriteByte(uint8_t wb);
+
+/* Atomic W5500 VDM transfers. These functions control CS internally. */
+int8_t W5500_SPI_ReadFrame(uint32_t addr_sel, uint8_t *data, uint16_t length);
+int8_t W5500_SPI_WriteFrame(uint32_t addr_sel, const uint8_t *data, uint16_t length);
 
 
 #endif /* ETHERNET_W5500_WIZCHIP_PORT_H_ */
