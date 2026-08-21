@@ -41,64 +41,127 @@ ELinkCommandResult RECEIVE_ELINK_CMD(const ELinkCommand *command){
 	}
 
 	switch(command->cmd_id){
-		// System Commands
-		case 0x01:
-			CMD_SYS_RESET();
-			break;
-		case 0x02:
-			CMD_SYS_START();
-			break;
-		case 0x03:
-			CMD_SYS_STOP();
-			break;
-		case ELINK_CMD_PING:
-			if(command->payload_size != ELINK_PING_PAYLOAD_SIZE){
-				return ELINK_CMD_ERR_PAYLOAD;
-			}
-			break;
-		case ELINK_CMD_SYNC_TIME:
-			if(command->payload_size != ELINK_SYNC_TIME_PAYLOAD_SIZE){
-				return ELINK_CMD_ERR_PAYLOAD;
-			}
-			CMD_SYNC_TIME();
-			break;
 
-		// Survival Commands
-		case 0x10:
-			CMD_HEAT_MANUAL(command->payload[0]);
-			break;
-		case 0x11:
-			CMD_HEAT_AUTO();
-			break;
+	    // System Commands
+	    case 0x01:
+	        if(command->payload_size != ELINK_SYS_RESET_PAYLOAD_SIZE){
+	            return ELINK_CMD_ERR_PAYLOAD;
+	        }
+	        CMD_SYS_RESET();
+	        break;
 
-		// RF Commands
-		case 0x20:
-			CMD_HALOW_CONNECT();
-			break;
-		case 0x21:
-			CMD_SET_TX_POWER(command->payload[0]);
-			break;
-		case 0x22:
-			CMD_SET_MCS_MODE(command->payload[0]);
-			break;
-		case 0x23:
-			CMD_RF_SILENCE();
-			break;
+	    case 0x02:
+	        if(command->payload_size != ELINK_SYS_START_PAYLOAD_SIZE){
+	            return ELINK_CMD_ERR_PAYLOAD;
+	        }
+	        CMD_SYS_START();
+	        break;
 
-		// Data Management Commands
-		case 0x30:
-			CMD_SAVE_DATA();
-			break;
-		case 0x31:
-			CMD_SEND_HALOW();
-			break;
-		case 0x32:
-			CMD_SEND_ELINK();
-			break;
+	    case 0x03:
+	        if(command->payload_size != ELINK_SYS_STOP_PAYLOAD_SIZE){
+	            return ELINK_CMD_ERR_PAYLOAD;
+	        }
+	        CMD_SYS_STOP();
+	        break;
 
-		default:
-			return ELINK_CMD_ERR_UNKNOWN_ID;
+	    case ELINK_CMD_PING:
+	        if(command->payload_size != ELINK_PING_PAYLOAD_SIZE){
+	            return ELINK_CMD_ERR_PAYLOAD;
+	        }
+	        break;
+
+	    case ELINK_CMD_SYNC_TIME:
+	        if(command->payload_size != ELINK_SYNC_TIME_PAYLOAD_SIZE){
+	            return ELINK_CMD_ERR_PAYLOAD;
+	        }
+	        CMD_SYNC_TIME();
+	        break;
+
+	    // Survival Commands
+	    case 0x10:
+	        if(command->payload_size != ELINK_HEAT_MANUAL_PAYLOAD_SIZE){
+	            return ELINK_CMD_ERR_PAYLOAD;
+	        }
+
+	        if(CMD_HEAT_MANUAL(command->payload[0]) == 0U){
+	            return ELINK_CMD_ERR_RANGE;
+	        }
+	        break;
+
+	    case 0x11:
+	        if(command->payload_size != ELINK_HEAT_AUTO_PAYLOAD_SIZE){
+	            return ELINK_CMD_ERR_PAYLOAD;
+	        }
+	        CMD_HEAT_AUTO();
+	        break;
+
+	    // RF Commands
+	    case 0x20:
+	        if(command->payload_size != ELINK_HALOW_CONNECT_PAYLOAD_SIZE){
+	            return ELINK_CMD_ERR_PAYLOAD;
+	        }
+	        CMD_HALOW_CONNECT();
+	        break;
+
+	    case 0x21:
+	        if(command->payload_size != ELINK_SET_TX_POWER_PAYLOAD_SIZE){
+	            return ELINK_CMD_ERR_PAYLOAD;
+	        }
+
+	        if(command->payload[0] < HALOW_TX_POWER_MIN_DBM ||
+	           command->payload[0] > HALOW_TX_POWER_MAX_DBM){
+	            return ELINK_CMD_ERR_RANGE;
+	        }
+
+	        CMD_SET_TX_POWER(command->payload[0]);
+	        break;
+
+	    case 0x22:
+	        if(command->payload_size != ELINK_SET_TX_MCS_PAYLOAD_SIZE){
+	            return ELINK_CMD_ERR_PAYLOAD;
+	        }
+
+	        if(command->payload[0] < HALOW_TX_MCS_MIN ||
+	           command->payload[0] > HALOW_TX_MCS_MAX){
+	            return ELINK_CMD_ERR_RANGE;
+	        }
+
+	        CMD_SET_MCS_MODE(command->payload[0]);
+	        break;
+
+	    case 0x23:
+	        if(command->payload_size != ELINK_RF_SILENCE_PAYLOAD_SIZE){
+	            return ELINK_CMD_ERR_PAYLOAD;
+	        }
+	        CMD_RF_SILENCE();
+	        break;
+
+	    // Data Management Commands
+	    case 0x30:
+	        if(command->payload_size != ELINK_SAVE_DATA_PAYLOAD_SIZE){
+	            return ELINK_CMD_ERR_PAYLOAD;
+	        }
+	        CMD_SAVE_DATA();
+	        break;
+
+	    case 0x31:
+	        if(command->payload_size != ELINK_SEND_HALOW_PAYLOAD_SIZE){
+	            return ELINK_CMD_ERR_PAYLOAD;
+	        }
+	        CMD_SEND_HALOW();
+	        break;
+
+	    case 0x32:
+	        if(command->payload_size != ELINK_SEND_ELINK_PAYLOAD_SIZE){
+	            return ELINK_CMD_ERR_PAYLOAD;
+	        }
+	        CMD_SEND_ELINK();
+	        break;
+
+	    default:
+	        return ELINK_CMD_ERR_UNKNOWN_ID;
 	}
+
 	return ELINK_CMD_OK;
 }
 
@@ -154,23 +217,11 @@ void CMD_HALOW_CONNECT(){
 	flag_force_halow_tx = 1U;
 }
 void CMD_SET_TX_POWER(uint8_t tx_power){
-	if(tx_power < HALOW_TX_POWER_MIN_DBM){
-		tx_power = 6U;
-	}
-	if(tx_power > HALOW_TX_POWER_MIN_DBM){
-			tx_power = 20U;
-	}
 	new_tx_power = tx_power;
 	flag_update_tx_power = 1;
 }
 
 void CMD_SET_MCS_MODE(uint8_t mcs_mode){
-	if(mcs_mode < HALOW_TX_MCS_MIN){
-		mcs_mode = 0;
-	}
-	if(mcs_mode > HALOW_TX_MCS_MAX){
-		mcs_mode = 7;
-	}
 	new_mcs = mcs_mode;
 	flag_update_mcs = 1;
 }
