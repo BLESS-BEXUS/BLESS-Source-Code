@@ -1138,8 +1138,7 @@ void StartAcquire(void *argument)
   //osEventFlagsWait(InitFlags, FLAG_SENSORS_OK | FLAG_HALOW_OK | FLAG_FLASH_OK | FLAG_ETHERNET_OK, osFlagsWaitAll, osWaitForever);
 
 
-  //current_state = STATE_IDDLE;
-  current_state = STATE_FLIGHT;
+  current_state = STATE_IDDLE; // For testing, switch to STATE_FLIGHT
 
 
   if(current_state == STATE_FLIGHT){
@@ -1209,7 +1208,11 @@ void StartAcquire(void *argument)
 		taskEXIT_CRITICAL();
 
 		if(manual_enabled != 0U){
-			output_power = (float)manual_power;
+			if (packet.int_temp >= 4000) {
+			    output_power = 0.0f;
+			}else{
+				output_power = (float)manual_power;
+			}
 			accumulative_error = 0.0f;
 			last_error = 0.0f;
 		}else{
@@ -1276,7 +1279,6 @@ void StartTXHalow(void *argument)
 	  TelemetryPacket rx_packet; // Telemetry packet from ACQUIRE task
 	  rx_index = 0;
 	  memset(halow_rx_lines, 0, sizeof(halow_rx_lines));
-
 	  memset(&rf_data_cache, 0, sizeof(TelemetryPacket));
 
 	  uint32_t last_tx_time = 0;

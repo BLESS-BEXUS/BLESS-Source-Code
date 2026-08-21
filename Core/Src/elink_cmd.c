@@ -143,11 +143,23 @@ void CMD_HALOW_CONNECT(){
 	flag_force_halow_tx = 1U;
 }
 void CMD_SET_TX_POWER(uint8_t tx_power){
+	if(tx_power < HALOW_TX_POWER_MIN_DBM){
+		tx_power = 6U;
+	}
+	if(tx_power > HALOW_TX_POWER_MIN_DBM){
+			tx_power = 20U;
+	}
 	new_tx_power = tx_power;
 	flag_update_tx_power = 1;
 }
 
 void CMD_SET_MCS_MODE(uint8_t mcs_mode){
+	if(mcs_mode < HALOW_TX_MCS_MIN){
+		mcs_mode = 0;
+	}
+	if(mcs_mode > HALOW_TX_MCS_MAX){
+		mcs_mode = 7;
+	}
 	new_mcs = mcs_mode;
 	flag_update_mcs = 1;
 }

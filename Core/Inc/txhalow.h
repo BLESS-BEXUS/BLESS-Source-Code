@@ -28,6 +28,11 @@
 #define HALOW_RX_LINE_SIZE 128U
 #define HALOW_RX_LINE_DEPTH 4U
 
+#define HALOW_TX_POWER_MIN_DBM 6U
+#define HALOW_TX_POWER_MAX_DBM 20U
+#define HALOW_TX_MCS_MIN 0U
+#define HALOW_TX_MCS_MAX 7U
+
 // Struct for the ethernet header
 typedef struct {
     uint8_t dest_mac[6]; // MAC of the RX module

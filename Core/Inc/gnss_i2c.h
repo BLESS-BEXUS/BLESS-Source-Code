@@ -14,9 +14,6 @@
 #define GNSS_I2C_REG_DATA_STREAM  0xFF
 
 HAL_StatusTypeDef GNSS_I2C_IsReady(I2C_HandleTypeDef *hi2c);
-HAL_StatusTypeDef GNSS_I2C_Read(I2C_HandleTypeDef *hi2c,
-                                uint8_t *data,
-                                uint16_t capacity,
-                                uint16_t *bytes_read);
+HAL_StatusTypeDef GNSS_I2C_Read(I2C_HandleTypeDef *hi2c, uint8_t *data, uint16_t capacity, uint16_t *bytes_read);
 
 #endif /* INC_GNSS_I2C_H_ */
