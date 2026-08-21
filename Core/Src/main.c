@@ -32,6 +32,7 @@
 #include "wizchip_port.h"
 #include "socket.h"
 #include "elink_cmd.h"
+#include "mission_time.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -1169,7 +1170,7 @@ void StartAcquire(void *argument)
 	}
 
 	packet.count = packet_counter;
-	packet.timestamp = HAL_GetTick();
+	packet.timestamp = MissionTime_GetMs();
 	packet_counter++;
 
 	readSensors(&packet);
@@ -1385,7 +1386,7 @@ void StartLogData(void *argument)
 	      /* Persist the boot even if the system resets before its first 1 Hz
 	       * acquisition. UINT32_MAX distinguishes this marker from samples. */
 	      TelemetryPacket boot_record = {0};
-	      boot_record.timestamp = HAL_GetTick();
+	      boot_record.timestamp = MissionTime_GetMs();
 	      boot_record.count = BLESS_BOOT_RECORD_COUNT;
 	      boot_record.system_state = (uint16_t)STATE_INIT;
 	      Telemetry_Finalize(&boot_record);
@@ -1566,6 +1567,13 @@ void StartRXELink(void *argument)
 		                                 ping_token,
 		                                 target_ip[0], target_ip[1], target_ip[2], target_ip[3],
 		                                 target_port);
+		                      } else if(incoming_cmd.cmd_id == ELINK_CMD_SYNC_TIME) {
+		                          static const uint8_t sync_time_ack[] = "ACK: SYNC_TIME\r\n";
+		                          sendto(0, (uint8_t *)sync_time_ack,
+		                                 sizeof(sync_time_ack) - 1U,
+		                                 target_ip, target_port);
+		                          printf("Mission time synchronized at local tick %lu.\r\n",
+		                                 HAL_GetTick());
 		                      } else {
 		                          sendto(0, (uint8_t*)"ACK: CMD EXECTUTED\r\n", 19, target_ip, target_port);
 		                          printf("Command %d processed.\r\n", incoming_cmd.cmd_id);

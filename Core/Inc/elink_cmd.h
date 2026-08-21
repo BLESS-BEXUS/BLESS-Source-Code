@@ -18,8 +18,10 @@
 #define ELINK_SYNC2 0xC245U
 
 #define ELINK_CMD_PING 0x04U
+#define ELINK_CMD_SYNC_TIME 0x05U
 #define ELINK_RSP_PONG 0x84U
 #define ELINK_PING_PAYLOAD_SIZE 2U
+#define ELINK_SYNC_TIME_PAYLOAD_SIZE 0U
 
 typedef enum {
 	ELINK_CMD_OK = 0,
@@ -74,6 +76,7 @@ void Build_Ping_Response(const ELinkCommand *request, ELinkCommand *response);
 void CMD_SYS_RESET();
 void CMD_SYS_START();
 void CMD_SYS_STOP();
+void CMD_SYNC_TIME(void);
 
 // SURVIVAL COMMANDS
 uint8_t CMD_HEAT_MANUAL(uint8_t value);

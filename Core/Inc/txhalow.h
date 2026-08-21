@@ -23,7 +23,7 @@
 #define HALOW_TX_POWER "9" // Mission default; runtime TXPOWER commands are not clamped
 #define HALOW_TX_MCS "0"
 
-#define DUTY_CYCLE_MS 3000
+#define DUTY_CYCLE_MS 10000
 #define HALOW_CONFIG_MAX_ATTEMPTS 3U
 #define HALOW_RX_LINE_SIZE 128U
 #define HALOW_RX_LINE_DEPTH 4U

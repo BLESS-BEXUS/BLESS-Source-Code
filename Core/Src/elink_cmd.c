@@ -9,6 +9,7 @@
 #include "main.h"
 #include "txhalow.h"
 #include "elink_cmd.h"
+#include "mission_time.h"
 #include "cmsis_os.h"
 
 extern osMessageQueueId_t txElinkMailBoxHandle;
@@ -54,6 +55,12 @@ ELinkCommandResult RECEIVE_ELINK_CMD(const ELinkCommand *command){
 			if(command->payload_size != ELINK_PING_PAYLOAD_SIZE){
 				return ELINK_CMD_ERR_PAYLOAD;
 			}
+			break;
+		case ELINK_CMD_SYNC_TIME:
+			if(command->payload_size != ELINK_SYNC_TIME_PAYLOAD_SIZE){
+				return ELINK_CMD_ERR_PAYLOAD;
+			}
+			CMD_SYNC_TIME();
 			break;
 
 		// Survival Commands
@@ -120,6 +127,10 @@ void CMD_SYS_START(){
 
 void CMD_SYS_STOP(){
 	current_state = STATE_IDDLE;
+}
+
+void CMD_SYNC_TIME(void){
+	MissionTime_Sync();
 }
 
 /*** SURVIVAL COMMANDS ***/
