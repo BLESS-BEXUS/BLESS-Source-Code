@@ -1593,8 +1593,12 @@ void StartRXELink(void *argument)
 		                      break;
 		                  case ELINK_CMD_ERR_PAYLOAD:
 		                      sendto(0, (uint8_t*)"ERR: PAYLOAD\r\n", 14, target_ip, target_port);
-		                      printf("Invalid payload size %u for command %u.\r\n",
-		                             incoming_cmd.payload_size, incoming_cmd.cmd_id);
+		                      printf("Invalid payload size %u for command %u.\r\n", incoming_cmd.payload_size, incoming_cmd.cmd_id);
+		                      break;
+		                  case ELINK_CMD_ERR_RANGE:
+		                      sendto(0, (uint8_t *)"ERR: RANGE\r\n", sizeof("ERR: RANGE\r\n") - 1U, target_ip, target_port);
+		                      printf("Parameter out of range for command %u.\r\n",
+		                             incoming_cmd.cmd_id);
 		                      break;
 		              }
 		          }
