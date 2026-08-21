@@ -1150,6 +1150,8 @@ void StartAcquire(void *argument)
   uint32_t packet_counter = 0;
   uint32_t previousWakeTime = osKernelGetTickCount();
 
+  uint32_t last_elink_tx_time = 0U;
+
   /* Infinite loop */
   for(;;)
   {
@@ -1247,8 +1249,11 @@ void StartAcquire(void *argument)
 	Telemetry_Finalize(&packet);
 	Telemetry_UpdateLatest(&packet);
 
-	/* E-Link is the command/status channel and remains alive in every state. */
-	ELink_QueueNewestTelemetry(&packet);
+	// Add telemetry to the E-LINK queue each 5 seconds to transmit through E-LINK
+	if ((HAL_GetTick() - last_elink_tx_time) >= 5000U) {
+	    ELink_QueueNewestTelemetry(&packet);
+	    last_elink_tx_time = HAL_GetTick();
+	}
 
 	if(packet_state == STATE_FLIGHT){
 		osMessageQueuePut(txMailBoxHandle, &packet, 0, 100);
