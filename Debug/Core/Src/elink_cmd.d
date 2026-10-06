@@ -33,7 +33,7 @@ Core/Src/elink_cmd.o: ../Core/Src/elink_cmd.c ../Core/Inc/main.h \
  ../Drivers/STM32L4xx_HAL_Driver/Inc/stm32l4xx_hal_uart.h \
  ../Drivers/STM32L4xx_HAL_Driver/Inc/stm32l4xx_hal_uart_ex.h \
  ../Core/Inc/txhalow.h ../Core/Inc/telemetry.h ../Core/Inc/elink_cmd.h \
- ../Core/Inc/main.h \
+ ../Core/Inc/main.h ../Core/Inc/mission_time.h \
  ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os.h \
  ../Middlewares/Third_Party/FreeRTOS/Source/include/FreeRTOS.h \
  ../Core/Inc/FreeRTOSConfig.h \
@@ -83,6 +83,7 @@ Core/Src/elink_cmd.o: ../Core/Src/elink_cmd.c ../Core/Inc/main.h \
 ../Core/Inc/telemetry.h:
 ../Core/Inc/elink_cmd.h:
 ../Core/Inc/main.h:
+../Core/Inc/mission_time.h:
 ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os.h:
 ../Middlewares/Third_Party/FreeRTOS/Source/include/FreeRTOS.h:
 ../Core/Inc/FreeRTOSConfig.h:

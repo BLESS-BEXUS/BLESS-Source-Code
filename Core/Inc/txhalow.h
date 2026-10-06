@@ -18,7 +18,7 @@
 #define HALOW_SSID "bless"
 #define HALOW_PSK "78a0c6ee134cde7516af41db0fb52cdb911a2fe09420eb0c170e7a88a57f3714"
 #define HALOW_BSS_BW "1"
-#define HALOW_FREQ_RANGE "8668,8678"
+#define HALOW_FREQ_RANGE "8660,8670"
 #define HALOW_ACKTMO "2990" // 10 * (Distance in km - 1) assuming 300km link
 #define HALOW_TX_POWER "9" // Mission default; runtime TXPOWER commands are not clamped
 #define HALOW_TX_MCS "0"

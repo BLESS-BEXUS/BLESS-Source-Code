@@ -1,0 +1,2 @@
+../Core/Src/mission_time.c:14:6:MissionTime_Sync	8	static
+../Core/Src/mission_time.c:22:10:MissionTime_GetMs	24	static

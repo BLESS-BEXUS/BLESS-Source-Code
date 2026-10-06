@@ -143,9 +143,9 @@ int8_t W5500_Init(void) {
     // Establish Static IP
     wiz_NetInfo netInfo = {
         .mac = {0x00, 0x08, 0xDC, 0xAB, 0xCD, 0xEF}, // MAC
-        .ip  = {10, 86, 110, 200},                   // Flight Segment IP
+        .ip  = {172, 16, 18, 152},                   // Flight Segment IP
         .sn  = {255, 255, 255, 0},                   // Netmask
-        .gw  = {10, 86, 110, 192},                   // Default gateway
+        .gw  = {0, 0, 0, 0},                   // Default gateway
         .dhcp = NETINFO_STATIC
     };
 

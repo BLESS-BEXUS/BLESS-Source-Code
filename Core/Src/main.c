@@ -372,15 +372,13 @@ int main(void)
   /* creation of TXELINK */
   TXELINKHandle = osThreadNew(StartTXELINK, NULL, &TXELINK_attributes);
 
-  /* Start HaLow UART reception only after TXHALOWHandle exists. */
-  HAL_UART_Receive_IT(&huart3, &rx_byte, 1);
-
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
   /* add events, ... */
+  HAL_UART_Receive_IT(&hlpuart1, &rx_byte, 1);
   /* USER CODE END RTOS_EVENTS */
 
   /* Start scheduler */
@@ -512,7 +510,7 @@ static void MX_LPUART1_UART_Init(void)
 
   /* USER CODE END LPUART1_Init 1 */
   hlpuart1.Instance = LPUART1;
-  hlpuart1.Init.BaudRate = 38400;
+  hlpuart1.Init.BaudRate = 115200;
   hlpuart1.Init.WordLength = UART_WORDLENGTH_8B;
   hlpuart1.Init.StopBits = UART_STOPBITS_1;
   hlpuart1.Init.Parity = UART_PARITY_NONE;
@@ -663,7 +661,6 @@ static void MX_SPI2_Init(void)
   hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi2.Init.NSS = SPI_NSS_SOFT;
-  /* Conservative operational clock for the flat-cable SPI link. */
   hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
   hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
@@ -793,10 +790,10 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOC, CS_F2_Pin|GPIO_RED_LED_Pin|GPIO_YELLOW_LED_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(CS_ETH_GPIO_Port, CS_ETH_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(CS_ETH_GPIO_Port, CS_ETH_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(CS_ETEMP_GPIO_Port, CS_ETEMP_Pin, GPIO_PIN_SET);
@@ -829,19 +826,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : GPIO_GREEN_LED_Pin */
-  GPIO_InitStruct.Pin = GPIO_GREEN_LED_Pin;
+  /*Configure GPIO pins : CS_ETH_Pin GPIO_GREEN_LED_Pin */
+  GPIO_InitStruct.Pin = CS_ETH_Pin|GPIO_GREEN_LED_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIO_GREEN_LED_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : CS_ETH_Pin */
-  GPIO_InitStruct.Pin = CS_ETH_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(CS_ETH_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pin : RD_DATA_Pin */
   GPIO_InitStruct.Pin = RD_DATA_Pin;
@@ -864,7 +854,7 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(CS_ETEMP_GPIO_Port, &GPIO_InitStruct);
 
-  /* W5500 INTn is unused: leave the MCU pin in high impedance. */
+  /*Configure GPIO pin : INT_ETH_Pin */
   GPIO_InitStruct.Pin = INT_ETH_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
@@ -962,7 +952,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
     //============== USART3 ==============
 
-    if (huart->Instance == USART3)
+    if (huart->Instance == LPUART1)
     {
         if (rx_byte == '\n' || rx_byte == '\r') {
             if (rx_index > 1) {
@@ -1139,7 +1129,7 @@ void StartAcquire(void *argument)
   //osEventFlagsWait(InitFlags, FLAG_SENSORS_OK | FLAG_HALOW_OK | FLAG_FLASH_OK | FLAG_ETHERNET_OK, osFlagsWaitAll, osWaitForever);
 
 
-  current_state = STATE_IDDLE; // For testing, switch to STATE_FLIGHT
+  current_state = STATE_FLIGHT; // For testing, switch to STATE_FLIGHT
 
 
   if(current_state == STATE_FLIGHT){
@@ -1278,7 +1268,7 @@ void StartTXHalow(void *argument)
 {
   /* USER CODE BEGIN StartTXHalow */
 	  osDelay(5000);
-	  if(Config_HaLow(&huart3)){
+	  if(Config_HaLow(&hlpuart1)){
 		  osEventFlagsSet(InitFlags, FLAG_HALOW_OK);
 	  }
 
@@ -1302,27 +1292,27 @@ void StartTXHalow(void *argument)
 		  }
 		  if(flag_halow_connect){
 			  flag_halow_connect = 0U;
-			  if(Config_HaLow(&huart3)){
+			  if(Config_HaLow(&hlpuart1)){
 				  osEventFlagsSet(InitFlags, FLAG_HALOW_OK);
 			  }
 		  }
 		  if(flag_update_tx_power && (halow_rf_silenced == 0U)){
 			  char str_power_tx[8];
 			  snprintf(str_power_tx, sizeof(str_power_tx), "%d", new_tx_power);
-			  (void)HaLow_Send_Config_Command(&huart3, "TXPOWER", str_power_tx);
+			  (void)HaLow_Send_Config_Command(&hlpuart1, "TXPOWER", str_power_tx);
 			  flag_update_tx_power = 0;
 		  }
 		  if(flag_update_mcs && (halow_rf_silenced == 0U)){
 			  char str_mcs[8];
 			  snprintf(str_mcs, sizeof(str_mcs), "%d", new_mcs);
-			  (void)HaLow_Send_Config_Command(&huart3, "TX_MCS", str_mcs);
+			  (void)HaLow_Send_Config_Command(&hlpuart1, "TX_MCS", str_mcs);
 			  flag_update_mcs = 0;
 		  }
 		  if(flag_force_halow_tx && (halow_rf_silenced == 0U)){
 			  TelemetryPacket forced_packet;
 			  flag_force_halow_tx = 0U;
 			  if(Telemetry_GetLatest(&forced_packet)){
-				  Tx_HaLow_Packet(&huart3, forced_packet);
+				  Tx_HaLow_Packet(&hlpuart1, forced_packet);
 				  last_tx_time = HAL_GetTick();
 			  }
 		  }
@@ -1341,7 +1331,7 @@ void StartTXHalow(void *argument)
 
 					  printTelemetry(&rx_packet); // Just during tests
 
-					  Tx_HaLow_Packet(&huart3, rx_packet);
+					  Tx_HaLow_Packet(&hlpuart1, rx_packet);
 					  last_tx_time = HAL_GetTick();
 				  }
 			  }

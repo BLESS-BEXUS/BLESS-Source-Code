@@ -113,10 +113,10 @@ void Error_Handler(void);
 #define GPIO_RED_LED_GPIO_Port GPIOC
 #define GPIO_YELLOW_LED_Pin GPIO_PIN_9
 #define GPIO_YELLOW_LED_GPIO_Port GPIOC
-#define GPIO_GREEN_LED_Pin GPIO_PIN_9
-#define GPIO_GREEN_LED_GPIO_Port GPIOA
 #define CS_ETH_Pin GPIO_PIN_8
 #define CS_ETH_GPIO_Port GPIOA
+#define GPIO_GREEN_LED_Pin GPIO_PIN_9
+#define GPIO_GREEN_LED_GPIO_Port GPIOA
 #define RD_DATA_Pin GPIO_PIN_10
 #define RD_DATA_GPIO_Port GPIOA
 #define RD_DATA_EXTI_IRQn EXTI15_10_IRQn
