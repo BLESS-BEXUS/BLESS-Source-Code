@@ -1618,7 +1618,9 @@ void StartTXELINK(void *argument)
 {
   /* USER CODE BEGIN StartTXELINK */
 	TelemetryPacket rx_packet;
-	uint8_t target_ip[4] = GS_IP;
+	uint8_t gs1_ip[4] = GS1_IP;
+	uint8_t gs2_ip[4] = GS2_IP;
+
 	uint16_t target_port = GS_PORT;
 
 	osEventFlagsWait(InitFlags, FLAG_ETHERNET_OK,
@@ -1635,17 +1637,45 @@ void StartTXELINK(void *argument)
 		   * modified by future processing stages. */
 		  Telemetry_Finalize(&rx_packet);
 		  ELink_EnsureTxSocket();
-		  int32_t sent_bytes = sendto(1, (uint8_t *)&rx_packet,
-		                                sizeof(TelemetryPacket),
-		                                target_ip, target_port);
-		  if (sent_bytes < 0) {
-			  uint8_t socket_state = getSn_SR(1);
-			  printf("Error transmitting Telemetry via ELINK (%ld), socket 0x%02X.\r\n",
-			         (long)sent_bytes, socket_state);
+		  /* Send telemetry to GS1 */
+		  int32_t sent_bytes_gs1 = sendto(
+				  1,
+				  (uint8_t *)&rx_packet,
+				  sizeof(TelemetryPacket),
+				  gs1_ip,
+				  target_port);
 
-			  /* A destination timeout leaves UDP usable. Reopen only when the
-			   * W5500 itself reports that socket 1 is no longer UDP. */
-			  if (socket_state != SOCK_UDP) {
+		  if (sent_bytes_gs1 < 0)
+		  {
+			  uint8_t socket_state = getSn_SR(1);
+
+			  printf("Error transmitting Telemetry to GS1 (%ld), socket 0x%02X.\r\n",
+		                      (long)sent_bytes_gs1, socket_state);
+
+			  if (socket_state != SOCK_UDP)
+			  {
+				  close(1);
+				  ELink_EnsureTxSocket();
+			  }
+		  }
+
+		  /* Send telemetry to GS2 */
+		  int32_t sent_bytes_gs2 = sendto(
+				  1,
+				  (uint8_t *)&rx_packet,
+				  sizeof(TelemetryPacket),
+				  gs2_ip, target_port);
+
+		  if (sent_bytes_gs2 < 0)
+		  {
+			  uint8_t socket_state = getSn_SR(1);
+
+			  printf("Error transmitting Telemetry to GS2 (%ld), socket 0x%02X.\r\n",
+					  (long)sent_bytes_gs2,
+					  socket_state);
+
+			  if (socket_state != SOCK_UDP)
+			  {
 				  close(1);
 				  ELink_EnsureTxSocket();
 			  }

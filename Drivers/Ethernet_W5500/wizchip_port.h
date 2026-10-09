@@ -10,7 +10,7 @@
 
 #include "main.h"
 
-#define GS_IP {172, 16, 18, 150}
+#define GS1_IP {172, 16, 18, 150}
 #define GS2_IP {172, 16, 18, 151}
 #define GS_PORT 5000
 
