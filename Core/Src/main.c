@@ -1462,6 +1462,47 @@ void StartRXGNSS(void *argument)
       }
   } while (status != HAL_OK);
 
+  /* Verify the active RAM setting, not just the I2C acknowledgement.
+   * Release the shared sensor bus between operations and while waiting. */
+  uint8_t airborne_verified = 0U;
+  for (uint8_t attempt = 0U; attempt < 3U && !airborne_verified; ++attempt) {
+      GNSS_UBXParser parser = {0};
+      status = HAL_ERROR;
+      if (osMutexAcquire(mtxI2C1Handle, osWaitForever) == osOK) {
+          status = GNSS_I2C_SetAirborne(&hi2c1);
+          osMutexRelease(mtxI2C1Handle);
+      }
+      if (status != HAL_OK) { osDelay(100); continue; }
+      osDelay(100);
+      status = HAL_ERROR;
+      if (osMutexAcquire(mtxI2C1Handle, osWaitForever) == osOK) {
+          status = GNSS_I2C_RequestDynamicModel(&hi2c1);
+          osMutexRelease(mtxI2C1Handle);
+      }
+      if (status != HAL_OK) { osDelay(100); continue; }
+      uint32_t started = HAL_GetTick();
+      while (!airborne_verified && (uint32_t)(HAL_GetTick() - started) < 1000U) {
+          bytes_read = 0U;
+          status = HAL_ERROR;
+          if (osMutexAcquire(mtxI2C1Handle, osWaitForever) == osOK) {
+              status = GNSS_I2C_Read(&hi2c1, i2c_data, sizeof(i2c_data), &bytes_read);
+              osMutexRelease(mtxI2C1Handle);
+          }
+          if (status == HAL_OK) {
+              for (uint16_t i = 0U; i < bytes_read; ++i) {
+                  if (GNSS_I2C_AirborneVerified(&parser, i2c_data[i])) {
+                      airborne_verified = 1U;
+                  }
+              }
+          }
+          osDelay(GPS_I2C_POLL_PERIOD_MS);
+      }
+  }
+  /* Configuration consumed startup stream data; begin NMEA at a fresh '$'. */
+  gps_idx = 0U;
+  printf(airborne_verified ? "GNSS Airborne <1g verified\r\n" :
+         "GNSS WARNING: Airborne <1g NOT verified; continuing NMEA\r\n");
+
   /* Infinite loop */
   for (;;)
   {

@@ -5,4 +5,4 @@
 ../Core/Src/sensors.c:95:16:Sensors_TemperatureIsValid	3
 ../Core/Src/sensors.c:100:6:Sensors_Init	3
 ../Core/Src/sensors.c:118:9:SensorsSelfCheck	12
-../Core/Src/sensors.c:195:9:readSensors	14
+../Core/Src/sensors.c:195:9:readSensors	11

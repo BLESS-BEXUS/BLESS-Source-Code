@@ -24,8 +24,8 @@
 ../Core/Src/main.c:1096:6:StartAcquire	136	static
 ../Core/Src/main.c:1267:6:StartTXHalow	280	static
 ../Core/Src/main.c:1354:6:StartLogData	152	static
-../Core/Src/main.c:1446:6:StartRXGNSS	152	static
-../Core/Src/main.c:1496:6:StartRXELink	80	static
-../Core/Src/main.c:1617:6:StartTXELINK	96	static
-../Core/Src/main.c:1666:6:HAL_TIM_PeriodElapsedCallback	16	static
-../Core/Src/main.c:1684:6:Error_Handler	4	static,ignoring_inline_asm
+../Core/Src/main.c:1446:6:StartRXGNSS	184	static
+../Core/Src/main.c:1537:6:StartRXELink	80	static
+../Core/Src/main.c:1658:6:StartTXELINK	104	static
+../Core/Src/main.c:1737:6:HAL_TIM_PeriodElapsedCallback	16	static
+../Core/Src/main.c:1755:6:Error_Handler	4	static,ignoring_inline_asm

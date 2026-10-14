@@ -1,2 +1,6 @@
 ../Core/Src/gnss_i2c.c:11:19:GNSS_I2C_IsReady	16	static
 ../Core/Src/gnss_i2c.c:16:19:GNSS_I2C_Read	48	static
+../Core/Src/gnss_i2c.c:69:26:GNSS_I2C_SendConfig	48	static
+../Core/Src/gnss_i2c.c:90:19:GNSS_I2C_SetAirborne	16	static
+../Core/Src/gnss_i2c.c:95:19:GNSS_I2C_RequestDynamicModel	16	static
+../Core/Src/gnss_i2c.c:100:9:GNSS_I2C_AirborneVerified	24	static

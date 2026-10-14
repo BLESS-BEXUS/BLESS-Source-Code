@@ -24,8 +24,8 @@
 ../Core/Src/main.c:1096:6:StartAcquire	14
 ../Core/Src/main.c:1267:6:StartTXHalow	19
 ../Core/Src/main.c:1354:6:StartLogData	19
-../Core/Src/main.c:1446:6:StartRXGNSS	7
-../Core/Src/main.c:1496:6:StartRXELink	16
-../Core/Src/main.c:1617:6:StartTXELINK	4
-../Core/Src/main.c:1666:6:HAL_TIM_PeriodElapsedCallback	2
-../Core/Src/main.c:1684:6:Error_Handler	1
+../Core/Src/main.c:1446:6:StartRXGNSS	20
+../Core/Src/main.c:1537:6:StartRXELink	16
+../Core/Src/main.c:1658:6:StartTXELINK	6
+../Core/Src/main.c:1737:6:HAL_TIM_PeriodElapsedCallback	2
+../Core/Src/main.c:1755:6:Error_Handler	1

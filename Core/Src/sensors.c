@@ -272,19 +272,9 @@ uint8_t readSensors(TelemetryPacket *packet){
 		i2c_recovery_needed = 1U;
 	}
 
+
 	MS5803_01BA_CALIBRATE_DATA(raw_press, raw_temp, &ms5803_prom, &ms5803);
-	Sensors_I2C_Lock();
-	HAL_StatusTypeDef npa_status = NPA730_I2C_FETCH_DATA_2BYTES(
-			&hi2c1, NPA730_I2C_ADDRESS, &npa730);
-	Sensors_I2C_Unlock();
-	if (npa_status == HAL_OK && npa730.status == 0U && npa730.pressure >= 0.0f) {
-		/* The NPA730 driver returns psi; telemetry carries whole pascals. */
-		packet->env_press = (uint32_t)(npa730.pressure * PSI_TO_PA + 0.5f);
-	} else {
-		success = 0;
-		packet->error_flags |= TELEMETRY_ERROR_PRESSURE;
-		i2c_recovery_needed = 1U;
-	}
+	packet->env_press = ms5803.pressure;
 
 	if(i2c_recovery_needed){
 		Sensors_I2C_RecoverBus();
