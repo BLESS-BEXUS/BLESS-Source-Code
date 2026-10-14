@@ -2,6 +2,6 @@
 ../Core/Src/txhalow.c:37:9:HaLow_PopRxLine	16	static
 ../Core/Src/txhalow.c:57:9:wait_for_ok	160	static
 ../Core/Src/txhalow.c:83:9:Tx_HaLow_Packet	184	static
-../Core/Src/txhalow.c:119:9:HaLow_Send_Config_Command	240	static
-../Core/Src/txhalow.c:149:9:Config_HaLow	16	static
-../Core/Src/txhalow.c:168:6:HaLow_Extract_Data	24	static
+../Core/Src/txhalow.c:141:9:HaLow_Send_Config_Command	240	static
+../Core/Src/txhalow.c:171:9:Config_HaLow	16	static
+../Core/Src/txhalow.c:232:6:HaLow_Extract_Data	24	static

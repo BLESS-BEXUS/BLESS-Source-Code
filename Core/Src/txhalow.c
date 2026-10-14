@@ -88,9 +88,31 @@ uint8_t Tx_HaLow_Packet(UART_HandleTypeDef *huart, TelemetryPacket rx_packet){
 
 	// Ethernet header config
 	EthernetHeader eth_hdr = {0};
-	uint8_t mac_dest[] = {0x82, 0x59, 0x13, 0x89, 0x90, 0xc0};
+
+	#if HALOW_GROUP_MODE
+
+	    const uint8_t mac_dest[6] = {
+	        0xFF, 0xFF, 0xFF,
+	        0xFF, 0xFF, 0xFF
+	    };
+
+	#else
+
+	    const uint8_t mac_dest[6] = {
+	        0x82, 0x59, 0x13,
+	        0x89, 0x90, 0xc0
+	    };
+
+	#endif
+
 	memcpy(eth_hdr.dest_mac, mac_dest, 6);
 	eth_hdr.eth_type = 0x0000;
+
+	/*
+	EthernetHeader eth_hdr = {0};
+	uint8_t mac_dest[] = {0x82, 0x59, 0x13, 0x89, 0x90, 0xc0};
+	memcpy(eth_hdr.dest_mac, mac_dest, 6);
+	eth_hdr.eth_type = 0x0000;*/
 
 	uart_flush(huart);
 	Telemetry_Finalize(&tx_packet);
@@ -146,22 +168,64 @@ uint8_t HaLow_Send_Config_Command(UART_HandleTypeDef *huart, const char *cmd, co
 	return 0U;
 }
 
-uint8_t Config_HaLow(UART_HandleTypeDef *huart){
+uint8_t Config_HaLow(UART_HandleTypeDef *huart)
+{
+    printf("WiFi HaLow Module Configuration\r\n");
+    osDelay(500);
+    if (!HaLow_Send_Config_Command(huart, "MODE", HALOW_MODE))
+    {
+    	return 0U;
+    }
 
-	printf("WiFi HaLow Module Configuration\r\n");
-	osDelay(500);
+#if !HALOW_GROUP_MODE
 
-	if(!HaLow_Send_Config_Command(huart, "MODE", HALOW_MODE)) return 0U;
-	if(!HaLow_Send_Config_Command(huart, "SSID", HALOW_SSID)) return 0U;
-	if(!HaLow_Send_Config_Command(huart, "PSK", HALOW_PSK)) return 0U;
-	if(!HaLow_Send_Config_Command(huart, "BSS_BW", HALOW_BSS_BW)) return 0U;
-	if(!HaLow_Send_Config_Command(huart, "FREQ_RANGE", HALOW_FREQ_RANGE)) return 0U;
-	if(!HaLow_Send_Config_Command(huart, "ACKTMO", HALOW_ACKTMO)) return 0U;
-	if(!HaLow_Send_Config_Command(huart, "TXPOWER", HALOW_TX_POWER)) return 0U;
-	if(!HaLow_Send_Config_Command(huart, "TX_MCS", HALOW_TX_MCS)) return 0U;
+    if (!HaLow_Send_Config_Command(huart, "SSID", HALOW_SSID))
+    {
+    	return 0U;
+    }
 
-	return 1;
+    if (!HaLow_Send_Config_Command(huart, "PSK", HALOW_PSK))
+    {
+    	return 0U;
+    }
 
+
+#endif
+
+    if (!HaLow_Send_Config_Command(huart, "BSS_BW", HALOW_BSS_BW))
+    {
+    	return 0U;
+    }
+
+
+    if (!HaLow_Send_Config_Command(huart, "FREQ_RANGE", HALOW_FREQ_RANGE))
+    {
+    	return 0U;
+    }
+
+
+#if !HALOW_GROUP_MODE
+
+    if (!HaLow_Send_Config_Command(huart, "ACKTMO", HALOW_ACKTMO))
+    {
+    	return 0U;
+    }
+
+
+#endif
+
+    if (!HaLow_Send_Config_Command(huart, "TXPOWER", HALOW_TX_POWER))
+    {
+    	return 0U;
+    }
+
+
+    if (!HaLow_Send_Config_Command(huart, "TX_MCS", HALOW_TX_MCS))
+    {
+    	return 0U;
+    }
+
+    return 1U;
 }
 
 
