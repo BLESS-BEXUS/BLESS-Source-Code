@@ -1,7 +1,7 @@
-../Core/Src/txhalow.c:27:6:uart_flush	16	static
-../Core/Src/txhalow.c:37:9:HaLow_PopRxLine	16	static
-../Core/Src/txhalow.c:57:9:wait_for_ok	160	static
-../Core/Src/txhalow.c:83:9:Tx_HaLow_Packet	184	static
-../Core/Src/txhalow.c:141:9:HaLow_Send_Config_Command	240	static
-../Core/Src/txhalow.c:171:9:Config_HaLow	16	static
-../Core/Src/txhalow.c:232:6:HaLow_Extract_Data	24	static
+../Core/Src/txhalow.c:28:6:uart_flush	16	static
+../Core/Src/txhalow.c:38:9:HaLow_PopRxLine	16	static
+../Core/Src/txhalow.c:58:9:wait_for_ok	160	static
+../Core/Src/txhalow.c:84:9:Tx_HaLow_Packet	192	static
+../Core/Src/txhalow.c:126:9:HaLow_Send_Config_Command	240	static
+../Core/Src/txhalow.c:156:9:Config_HaLow	16	static
+../Core/Src/txhalow.c:217:6:HaLow_Extract_Data	24	static

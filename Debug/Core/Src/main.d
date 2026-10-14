@@ -54,7 +54,7 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  C:/Users/Mario/Documents/BLESS/BLESS-Source-Code/Drivers/Ethernet_W5500/../Ethernet_W5500/wizchip_conf.h \
  C:/Users/Mario/Documents/BLESS/BLESS-Source-Code/Drivers/Ethernet_W5500/../Ethernet_W5500/W5500/w5500.h \
  C:/Users/Mario/Documents/BLESS/BLESS-Source-Code/Drivers/Ethernet_W5500/wizchip_conf.h \
- ../Core/Inc/elink_cmd.h ../Core/Inc/mission_time.h
+ ../Core/Inc/elink_cmd.h ../Core/Inc/txhalow.h ../Core/Inc/mission_time.h
 ../Core/Inc/main.h:
 ../Drivers/STM32L4xx_HAL_Driver/Inc/stm32l4xx_hal.h:
 ../Core/Inc/stm32l4xx_hal_conf.h:
@@ -122,4 +122,5 @@ C:/Users/Mario/Documents/BLESS/BLESS-Source-Code/Drivers/Ethernet_W5500/../Ether
 C:/Users/Mario/Documents/BLESS/BLESS-Source-Code/Drivers/Ethernet_W5500/../Ethernet_W5500/W5500/w5500.h:
 C:/Users/Mario/Documents/BLESS/BLESS-Source-Code/Drivers/Ethernet_W5500/wizchip_conf.h:
 ../Core/Inc/elink_cmd.h:
+../Core/Inc/txhalow.h:
 ../Core/Inc/mission_time.h:

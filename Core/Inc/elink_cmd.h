@@ -11,6 +11,7 @@
 /******* E-LINK COMMAND PACKET STRUCTURE *******/
 
 #include "main.h"
+#include "txhalow.h"
 
 #define MAX_PAYLOAD_SIZE 2U
 
@@ -38,6 +39,8 @@
 #define ELINK_SET_TX_POWER_PAYLOAD_SIZE    1U
 #define ELINK_SET_TX_MCS_PAYLOAD_SIZE      1U
 #define ELINK_RF_SILENCE_PAYLOAD_SIZE      0U
+#define ELINK_SET_HALOW_MODE_PAYLOAD_SIZE   1U
+#define ELINK_CMD_SET_HALOW_MODE           0x24U
 
 /* DATA MANAGEMENT COMMANDS */
 #define ELINK_SAVE_DATA_PAYLOAD_SIZE       0U
@@ -81,6 +84,8 @@ extern volatile uint8_t heater_manual_enabled;
 extern volatile uint8_t heater_manual_power_pct;
 
 extern volatile uint8_t flag_halow_connect;
+extern volatile HaLowMode_t requested_halow_mode;
+extern volatile uint8_t flag_halow_mode_change;
 extern volatile uint8_t halow_rf_silenced;
 extern volatile uint8_t flag_force_halow_tx;
 
@@ -105,6 +110,7 @@ void CMD_HEAT_AUTO();
 
 // RADIO FREQUENCY COMMANDS
 void CMD_HALOW_CONNECT();
+void CMD_SET_HALOW_MODE(uint8_t mode);
 void CMD_SET_TX_POWER(uint8_t tx_power);
 void CMD_SET_MCS_MODE(uint8_t mcs_mode);
 void CMD_RF_SILENCE();

@@ -136,7 +136,15 @@ ELinkCommandResult RECEIVE_ELINK_CMD(const ELinkCommand *command){
 	        CMD_RF_SILENCE();
 	        break;
 
-	    // Data Management Commands
+	    case ELINK_CMD_SET_HALOW_MODE:
+        if (command->payload_size != ELINK_SET_HALOW_MODE_PAYLOAD_SIZE)
+            return ELINK_CMD_ERR_PAYLOAD;
+        if (command->payload[0] > (uint8_t)HALOW_MODE_GROUP)
+            return ELINK_CMD_ERR_RANGE;
+        CMD_SET_HALOW_MODE(command->payload[0]);
+        break;
+
+    // Data Management Commands
 	    case 0x30:
 	        if(command->payload_size != ELINK_SAVE_DATA_PAYLOAD_SIZE){
 	            return ELINK_CMD_ERR_PAYLOAD;
@@ -215,6 +223,10 @@ void CMD_HALOW_CONNECT(){
 	halow_rf_silenced = 0U;
 	flag_halow_connect = 1U;
 	flag_force_halow_tx = 1U;
+}
+void CMD_SET_HALOW_MODE(uint8_t mode){
+    requested_halow_mode = (HaLowMode_t)mode;
+    flag_halow_mode_change = 1U;
 }
 void CMD_SET_TX_POWER(uint8_t tx_power){
 	new_tx_power = tx_power;

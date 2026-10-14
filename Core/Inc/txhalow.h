@@ -10,20 +10,20 @@
 
 #include "telemetry.h"
 
-/************* COMMAND DEFINES *************/
-#define HALOW_GROUP_MODE 1
+/************* COMPILATION FLAG HALOW MODE *************/
+/* GROUP is optional; boot in NORMAL (AP) mode. */
+typedef enum {
+    HALOW_MODE_NORMAL = 0U,
+    HALOW_MODE_GROUP = 1U
+} HaLowMode_t;
+#define HALOW_INITIAL_MODE HALOW_MODE_NORMAL
 
 /************* COMMAND DEFINES *************/
 #define TX_PACKET_COMMAND "AT+TXDATA=67\r\n" // 53 bytes (packet) + 14 bytes (ethernet header)
 
 /************* RF CONFIG DEFINES *************/
-#if HALOW_GROUP_MODE
-#define HALOW_MODE "GROUP"
-#else
-#define HALOW_MODE "AP"
 #define HALOW_SSID "bless"
 #define HALOW_PSK "78a0c6ee134cde7516af41db0fb52cdb911a2fe09420eb0c170e7a88a57f3714"
-#endif
 
 #define HALOW_BSS_BW "1"
 #define HALOW_FREQ_RANGE "8660,8670"
@@ -58,7 +58,7 @@ void uart_flush(UART_HandleTypeDef *huart);
 uint8_t wait_for_ok(uint32_t timeout_ms);
 uint8_t Tx_HaLow_Packet(UART_HandleTypeDef *huart, TelemetryPacket packet);
 uint8_t HaLow_Send_Config_Command(UART_HandleTypeDef *huart, const char *cmd, const char *cmd_value);
-uint8_t Config_HaLow(UART_HandleTypeDef *huart);
+uint8_t Config_HaLow(UART_HandleTypeDef *huart, HaLowMode_t mode);
 void HaLow_Extract_Data(const char *rx_line, TelemetryPacket *tx_packet);
 uint8_t HaLow_PopRxLine(char *line, uint16_t capacity);
 

@@ -7,6 +7,7 @@
 
 #include "main.h"
 #include "txhalow.h"
+extern volatile HaLowMode_t halow_active_mode;
 #include "cmsis_os.h"
 #include <stdio.h>
 #include <string.h>
@@ -89,30 +90,14 @@ uint8_t Tx_HaLow_Packet(UART_HandleTypeDef *huart, TelemetryPacket rx_packet){
 	// Ethernet header config
 	EthernetHeader eth_hdr = {0};
 
-	#if HALOW_GROUP_MODE
-
-	    const uint8_t mac_dest[6] = {
-	        0xFF, 0xFF, 0xFF,
-	        0xFF, 0xFF, 0xFF
-	    };
-
-	#else
-
-	    const uint8_t mac_dest[6] = {
-	        0x82, 0x59, 0x13,
-	        0x89, 0x90, 0xc0
-	    };
-
-	#endif
-
-	memcpy(eth_hdr.dest_mac, mac_dest, 6);
+	    if (halow_active_mode == HALOW_MODE_GROUP) {
+        const uint8_t dest[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
+        memcpy(eth_hdr.dest_mac, dest, sizeof(dest));
+    } else {
+        const uint8_t dest[6] = {0x82,0x59,0x13,0x89,0x90,0xC0};
+        memcpy(eth_hdr.dest_mac, dest, sizeof(dest));
+    }
 	eth_hdr.eth_type = 0x0000;
-
-	/*
-	EthernetHeader eth_hdr = {0};
-	uint8_t mac_dest[] = {0x82, 0x59, 0x13, 0x89, 0x90, 0xc0};
-	memcpy(eth_hdr.dest_mac, mac_dest, 6);
-	eth_hdr.eth_type = 0x0000;*/
 
 	uart_flush(huart);
 	Telemetry_Finalize(&tx_packet);
@@ -168,16 +153,16 @@ uint8_t HaLow_Send_Config_Command(UART_HandleTypeDef *huart, const char *cmd, co
 	return 0U;
 }
 
-uint8_t Config_HaLow(UART_HandleTypeDef *huart)
+uint8_t Config_HaLow(UART_HandleTypeDef *huart, HaLowMode_t mode)
 {
     printf("WiFi HaLow Module Configuration\r\n");
     osDelay(500);
-    if (!HaLow_Send_Config_Command(huart, "MODE", HALOW_MODE))
+    if (!HaLow_Send_Config_Command(huart, "MODE", mode == HALOW_MODE_GROUP ? "GROUP" : "AP"))
     {
     	return 0U;
     }
 
-#if !HALOW_GROUP_MODE
+if (mode == HALOW_MODE_NORMAL) {
 
     if (!HaLow_Send_Config_Command(huart, "SSID", HALOW_SSID))
     {
@@ -190,7 +175,7 @@ uint8_t Config_HaLow(UART_HandleTypeDef *huart)
     }
 
 
-#endif
+} 
 
     if (!HaLow_Send_Config_Command(huart, "BSS_BW", HALOW_BSS_BW))
     {
@@ -204,7 +189,7 @@ uint8_t Config_HaLow(UART_HandleTypeDef *huart)
     }
 
 
-#if !HALOW_GROUP_MODE
+if (mode == HALOW_MODE_NORMAL) {
 
     if (!HaLow_Send_Config_Command(huart, "ACKTMO", HALOW_ACKTMO))
     {
@@ -212,7 +197,7 @@ uint8_t Config_HaLow(UART_HandleTypeDef *huart)
     }
 
 
-#endif
+} 
 
     if (!HaLow_Send_Config_Command(huart, "TXPOWER", HALOW_TX_POWER))
     {

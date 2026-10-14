@@ -190,6 +190,9 @@ volatile uint8_t heater_manual_enabled = 0U;
 volatile uint8_t heater_manual_power_pct = 0U;
 
 volatile uint8_t flag_halow_connect = 0U;
+volatile HaLowMode_t halow_active_mode = HALOW_INITIAL_MODE;
+volatile HaLowMode_t requested_halow_mode = HALOW_INITIAL_MODE;
+volatile uint8_t flag_halow_mode_change = 0U;
 volatile uint8_t halow_rf_silenced = 0U;
 volatile uint8_t flag_force_halow_tx = 0U;
 
@@ -1268,7 +1271,7 @@ void StartTXHalow(void *argument)
 {
   /* USER CODE BEGIN StartTXHalow */
 	  osDelay(5000);
-	  if(Config_HaLow(&hlpuart1)){
+	  if(Config_HaLow(&hlpuart1, halow_active_mode)){
 		  osEventFlagsSet(InitFlags, FLAG_HALOW_OK);
 	  }
 
@@ -1290,12 +1293,23 @@ void StartTXHalow(void *argument)
 				  HaLow_Extract_Data(line, &rf_data_cache);
 			  }
 		  }
-		  if(flag_halow_connect){
-			  flag_halow_connect = 0U;
-			  if(Config_HaLow(&hlpuart1)){
-				  osEventFlagsSet(InitFlags, FLAG_HALOW_OK);
-			  }
-		  }
+          if (flag_halow_mode_change || flag_halow_connect) {
+              HaLowMode_t target = requested_halow_mode;
+              flag_halow_mode_change = 0U;
+              flag_halow_connect = 0U;
+              /* Do not transmit until the new AT configuration finishes. */
+              if (Config_HaLow(&hlpuart1, target)) {
+                  halow_active_mode = target;
+                  memset(&rf_data_cache, 0, sizeof(rf_data_cache));
+                  osEventFlagsSet(InitFlags, FLAG_HALOW_OK);
+                  printf("HaLow mode active: %s\r\n",
+                      target == HALOW_MODE_GROUP ? "GROUP" : "AP");
+              } else {
+                  /* Partially applied commands may leave radio in unknown mode.
+                     Recover with ELINK_CMD_HALOW_CONNECT (0x20). */
+                  printf("HaLow mode reconfiguration failed; retry via E-Link\r\n");
+              }
+          }
 		  if(flag_update_tx_power && (halow_rf_silenced == 0U)){
 			  char str_power_tx[8];
 			  snprintf(str_power_tx, sizeof(str_power_tx), "%d", new_tx_power);
